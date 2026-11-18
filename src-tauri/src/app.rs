@@ -129,10 +129,34 @@ fn render_preview(lib: &Library, uri: &str) -> String {
         }
     }
     let Some(cv) = cv else { return error_page("Missing cv parameter", None) };
-    match lib.render_cv(&cv, theme.as_deref().filter(|s| !s.is_empty()), commit.as_deref().filter(|s| !s.is_empty())) {
+    let theme = theme.as_deref().filter(|s| !s.is_empty());
+    let commit = commit.as_deref().filter(|s| !s.is_empty());
+    // Spec §5.3: a file broken outside the app shows its last committed (valid) version plus a notice.
+    let broken = commit.is_none()
+        && match lib.read_cv(&cv) {
+            Err(CoreError::Json(_)) => true,
+            Ok(doc) => jsoncv_core::schema::validate(&doc.cv).is_err(),
+            Err(_) => false,
+        };
+    let res = if broken {
+        lib.render_cv(&cv, theme, Some("HEAD")).map(|html| with_notice(&html))
+    } else {
+        lib.render_cv(&cv, theme, commit)
+    };
+    match res {
         Ok(html) => html,
         Err(CoreError::Render(e)) => error_page(&e.message, e.line),
+        Err(e) if broken => error_page(&format!("This file has an error and no saved version: {e}"), None),
         Err(e) => error_page(&e.to_string(), None),
+    }
+}
+
+/// Adds a fixed notice bar to a rendered page (inline style only; the preview CSP allows no scripts).
+fn with_notice(html: &str) -> String {
+    let bar = "<div style=\"position:fixed;top:0;left:0;right:0;z-index:2147483647;padding:6px 12px;background:#fff3cd;color:#664d03;border-bottom:1px solid #e0c36b;font:13px system-ui,sans-serif\">This file has an error; showing the last saved version.</div>";
+    match html.rfind("</body>") {
+        Some(i) => format!("{}{bar}{}", &html[..i], &html[i..]),
+        None => format!("{html}{bar}"),
     }
 }
 
@@ -265,6 +289,20 @@ mod tests {
         let bad = render_preview(&lib, "http://jsoncv-preview.localhost/render?cv=tailored%2Fnope");
         assert!(bad.contains("Cannot render") && bad.contains("tailored/nope"), "{bad}");
         assert!(render_preview(&lib, "jsoncv-preview://localhost/render").contains("Missing cv"));
+    }
+
+    #[test]
+    fn preview_of_broken_file_shows_last_saved_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = Library::open(dir.path()).unwrap();
+        let url = preview_url("main");
+        std::fs::write(dir.path().join("main.cv.json"), "{").unwrap();
+        let page = render_preview(&lib, url.as_str());
+        assert!(page.contains("Mara Lindqvist") && page.contains("showing the last saved version"), "{page}");
+        std::fs::write(dir.path().join("main.cv.json"), r#"{"basics":{"name":"Broken"},"work":[{"startDate":"March"}]}"#).unwrap();
+        let page = render_preview(&lib, url.as_str());
+        assert!(page.contains("Mara Lindqvist") && !page.contains("Broken"), "{page}");
+        assert!(page.contains("showing the last saved version"));
     }
 
     #[test]
