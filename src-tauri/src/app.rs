@@ -59,6 +59,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_cvs,
+            commands::get_schema,
             commands::read_cv,
             commands::save_draft,
             commands::create_tailored,

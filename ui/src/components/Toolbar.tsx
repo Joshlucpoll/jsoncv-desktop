@@ -1,10 +1,10 @@
 import { DEFAULT_THEME, type ThemeInfo } from '../api.ts'
 
-type Props = { name: string; theme: string | null; themes: ThemeInfo[]; onTheme: (id: string) => void }
+type Props = { name: string; theme: string | null; themes: ThemeInfo[]; onTheme: (id: string) => void; editing: boolean; onEdit: () => void }
 
 const title = (name: string) => (name === 'main' ? 'Main CV' : name.replace(/^tailored\//, ''))
 
-export function Toolbar({ name, theme, themes, onTheme }: Props) {
+export function Toolbar({ name, theme, themes, onTheme, editing, onEdit }: Props) {
   const value = theme ?? DEFAULT_THEME
   const builtin = themes.filter((t) => t.builtin)
   const custom = themes.filter((t) => !t.builtin)
@@ -26,8 +26,8 @@ export function Toolbar({ name, theme, themes, onTheme }: Props) {
           )}
         </select>
       </label>
-      {/* Enabled in Tasks 13 (Edit) and 15 (Export). */}
-      <button disabled title="Coming soon">Edit <kbd>⌘E</kbd></button>
+      <button className={editing ? 'on' : undefined} aria-pressed={editing} onClick={onEdit}>Edit <kbd>{/mac/i.test(navigator.platform) ? '⌘E' : 'Ctrl+E'}</kbd></button>
+      {/* Export is enabled in Task 15. */}
       <button disabled title="Coming soon">Export ▾</button>
     </header>
   )

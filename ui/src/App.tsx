@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { type CvInfo, type ThemeInfo, errorMessage, listCvs, listThemes, onLibraryChanged, setCvTheme } from './api.ts'
 import { Sidebar } from './components/Sidebar.tsx'
 import { Toolbar } from './components/Toolbar.tsx'
+import { EditPanel } from './components/EditPanel.tsx'
 import { Preview } from './components/Preview.tsx'
 
 export default function App() {
@@ -11,7 +12,8 @@ export default function App() {
   const [commit] = useState<string>() // history commit preview: Task 14
   const [reloadKey, setReloadKey] = useState(0)
   const [error, setError] = useState<string>()
-  // Edit-panel flag (Task 13) and cv/themes view (Task 15) are added with their features.
+  const [editing, setEditing] = useState(false)
+  // cv/themes view (Task 15) is added with its feature.
 
   const fail = useCallback((e: unknown) => setError(errorMessage(e)), [])
   const reloadCvs = useCallback(() => listCvs().then(setCvs, fail), [fail])
@@ -39,6 +41,17 @@ export default function App() {
     selectedRef.current = current
   }, [current])
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault()
+        setEditing((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   return (
     <div className="app">
       <Sidebar cvs={cvs} selected={current} onSelect={setSelected} onChanged={reloadCvs} onError={fail} />
@@ -47,6 +60,8 @@ export default function App() {
           name={current}
           theme={cv?.theme ?? null}
           themes={themes}
+          editing={editing}
+          onEdit={() => setEditing((v) => !v)}
           onTheme={(id) =>
             setCvTheme(current, id).then(reloadCvs, fail)
           }
@@ -57,7 +72,10 @@ export default function App() {
             <button className="link" onClick={() => setError(undefined)}>Dismiss</button>
           </div>
         )}
-        <Preview cv={current} commit={commit} reloadKey={reloadKey} />
+        <div className="workspace">
+          <Preview cv={current} commit={commit} reloadKey={reloadKey} />
+          {editing && <EditPanel key={current} name={current} onClose={() => setEditing(false)} />}
+        </div>
       </main>
     </div>
   )

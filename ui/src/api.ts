@@ -54,3 +54,4 @@ export function previewUrl(cv: string, theme?: string, commit?: string): string 
     ? `http://jsoncv-preview.localhost/render?${q}`
     : `jsoncv-preview://localhost/render?${q}`
 }
+export const getSchema = () => invoke<Record<string, unknown>>('get_schema')

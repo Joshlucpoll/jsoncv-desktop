@@ -84,6 +84,11 @@ pub async fn list_cvs(state: State<'_, AppState>) -> Res<Vec<CvInfo>> {
 }
 
 #[tauri::command]
+pub fn get_schema() -> Result<Value, ApiError> {
+    serde_json::from_str(jsoncv_core::schema::SCHEMA).map_err(|e| CoreError::from(e).into())
+}
+
+#[tauri::command]
 pub async fn read_cv(state: State<'_, AppState>, name: String) -> Res<Value> {
     let doc = with_lib(&state, move |l| l.read_cv(&name)).await?;
     Ok(json!({ "name": doc.name, "cv": doc.cv, "base": doc.base }))

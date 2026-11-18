@@ -1,5 +1,6 @@
 // DEV ONLY: lets the UI run in a plain browser at /?mock for screenshots.
 import { mockIPC } from '@tauri-apps/api/mocks'
+import schema from '../../../crates/core/schema/jsoncv.schema.json'
 import type { CvInfo, ThemeInfo } from '../api.ts'
 
 const now = Date.now()
@@ -11,6 +12,16 @@ const cvs: CvInfo[] = [
 ]
 const theme = (id: string, name: string, builtin: boolean): ThemeInfo => ({ id, builtin, meta: { name, description: '', page: { size: 'A4' } } })
 const themes = [theme('builtin:classic', 'Classic', true), theme('builtin:two-column', 'Two-column', true), theme('my-theme', 'my-theme', false)]
+
+const sampleCv = {
+  basics: {
+    name: 'Ada Lovelace', label: 'Mathematician', email: 'ada@example.com', image: 'assets/ada.jpg',
+    location: { city: 'London', countryCode: 'GB' },
+    profiles: [{ network: 'GitHub', username: 'ada', url: 'https://github.com/ada' }],
+  },
+  work: [{ name: 'Analytical Engines Ltd', position: 'Programmer', startDate: '1842-01', highlights: ['Wrote the first program'] }],
+  skills: [{ name: 'Mathematics', keywords: ['Algebra', 'Calculus'] }],
+}
 
 mockIPC(
   (cmd, args) => {
@@ -24,6 +35,13 @@ mockIPC(
         if (cv) cv.theme = a.themeId
         return { commit: 'abc', base: 'def' }
       }
+      case 'get_schema': return schema
+      case 'read_cv': return { name: a.name, cv: sampleCv, base: 'h1' }
+      case 'history': return [{ commit: 'c0ffee', author: 'You', message: 'edit', time_ms: now }]
+      case 'diff': return '@@ -2,3 +2,3 @@\n   "basics": {\n-    "name": "Ada Lovelace",\n+    "name": "Ada King",\n     "label": "Mathematician"'
+      case 'save_draft': return { commit: 'c1', base: 'h2' }
+      case 'add_asset_from_path': return 'assets/photo.png'
+      case 'plugin:dialog|open': return '/tmp/photo.png'
       default: return null
     }
   },
