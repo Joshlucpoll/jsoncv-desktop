@@ -63,15 +63,18 @@ impl Library {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
             Err(e) => return Err(e.into()),
         };
-        let mut cur = cur;
-        for pat in ["exports/", ".*.tmp-*"] {
-            if !cur.split(|b| *b == b'\n').any(|l| l == pat.as_bytes()) {
-                if !cur.is_empty() && !cur.ends_with(b"\n") {
-                    cur.push(b'\n');
-                }
-                cur.extend_from_slice(format!("{pat}\n").as_bytes());
-                std::fs::write(&gi, &cur)?;
-            }
+        let has = |pat: &str| cur.split(|b| *b == b'\n').any(|l| l.strip_suffix(b"\r").unwrap_or(l) == pat.as_bytes());
+        let mut add = String::new();
+        if !cur.is_empty() && !cur.ends_with(b"\n") {
+            add.push('\n');
+        }
+        for pat in ["exports/", ".*.tmp-*"].into_iter().filter(|p| !has(p)) {
+            add += &format!("{pat}\n");
+        }
+        if add.trim() != "" {
+            // Append only; existing bytes are never rewritten.
+            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&gi)?;
+            std::io::Write::write_all(&mut f, add.as_bytes())?;
         }
         let fresh = !root.join(".git").exists();
         if fresh {
@@ -226,22 +229,45 @@ impl Library {
     pub fn save_draft(&self, name: &str, base_cv: &Value, draft: &Value) -> Result<Saved, CoreError> {
         let ops = serde_json::to_value(json_patch::diff(base_cv, draft))?;
         let ops = ops.as_array().cloned().unwrap_or_default();
-        // Each replace/remove gets a test just before it, valued from base_cv with earlier ops applied
+        // Each op gets a test just before it, valued from base_cv with earlier ops applied
         // (json-patch shifts array indices, so a single up-front guard would miss elements).
+        // replace/remove test the target; a nested add tests its parent. A root-level add has no
+        // parent to test, so the key must still be absent in the live doc (checked under the lock).
         let mut work = base_cv.clone();
         let mut all: Vec<Value> = vec![];
+        let mut root_adds: Vec<String> = vec![];
         for o in ops {
-            if matches!(o["op"].as_str(), Some("replace" | "remove")) {
-                let path = o["path"].as_str().unwrap_or("");
-                let v = work.pointer(path).ok_or_else(|| CoreError::PatchFailed(format!("no value at {path}")))?;
-                all.push(serde_json::json!({"op":"test","path":path,"value":v}));
+            let path = o["path"].as_str().unwrap_or("").to_string();
+            let guard = match o["op"].as_str() {
+                Some("replace" | "remove") => Some(path.as_str()),
+                Some("add") => match path.rsplit_once('/') {
+                    Some(("", _)) => {
+                        root_adds.push(path.clone());
+                        None
+                    }
+                    Some((parent, _)) => Some(parent),
+                    None => None,
+                },
+                _ => None,
+            };
+            if let Some(g) = guard {
+                let v = work.pointer(g).ok_or_else(|| CoreError::PatchFailed(format!("no value at {g}")))?;
+                all.push(serde_json::json!({"op":"test","path":g,"value":v}));
             }
             let one: json_patch::Patch = serde_json::from_value(Value::Array(vec![o.clone()]))?;
             json_patch::patch(&mut work, &one).map_err(|e| CoreError::PatchFailed(e.to_string()))?;
             all.push(o);
         }
         let patch: json_patch::Patch = serde_json::from_value(Value::Array(all))?;
-        self.patch_cv(name, &patch, Author::You, None)
+        with_lock(&self.root, || {
+            self.sweep_external()?;
+            let mut cv = self.read_cv(name)?.cv;
+            if let Some(p) = root_adds.iter().find(|p| cv.pointer(p).is_some()) {
+                return Err(CoreError::PatchFailed(format!("{p} was added by someone else")));
+            }
+            json_patch::patch(&mut cv, &patch).map_err(|e| CoreError::PatchFailed(e.to_string()))?;
+            self.write_locked(name, &cv, Author::You, &default_message(&patch))
+        })
     }
 
     pub fn restore(&self, name: &str, commit: &str, author: Author) -> Result<Saved, CoreError> {

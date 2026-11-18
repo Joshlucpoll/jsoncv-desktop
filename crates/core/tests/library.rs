@@ -117,3 +117,15 @@ fn open_does_not_commit_invalid_main() {
     assert!(tree.get_path(std::path::Path::new(".gitignore")).is_ok());
     assert_eq!(std::fs::read(d.path().join("main.cv.json")).unwrap(), b"{");
 }
+
+#[test]
+fn open_keeps_gitignore_bytes_as_prefix() {
+    let d = TempDir::new().unwrap();
+    let orig = b"node_modules/\r\n# keep me\r\nexports/\r\n.DS_Store".to_vec();
+    std::fs::write(d.path().join(".gitignore"), &orig).unwrap();
+    Library::open(d.path()).unwrap();
+    let gi = std::fs::read(d.path().join(".gitignore")).unwrap();
+    assert!(gi.starts_with(&orig), "{}", String::from_utf8_lossy(&gi));
+    let s = String::from_utf8_lossy(&gi);
+    assert!(s.lines().any(|l| l == ".*.tmp-*"));
+}

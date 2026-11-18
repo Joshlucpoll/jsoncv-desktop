@@ -171,3 +171,44 @@ fn gitignore_has_tmp_pattern() {
     let gi = std::fs::read_to_string(d.path().join(".gitignore")).unwrap();
     assert!(gi.lines().any(|l| l == ".*.tmp-*"));
 }
+
+#[test]
+fn draft_add_after_array_shift_detects_conflict() {
+    let (d, lib) = setup();
+    let base = lib.read_cv("main").unwrap().cv;
+    assert!(base["work"][1].get("url").is_none());
+    let mut draft = base.clone();
+    draft["work"][1]["url"] = json!("https://user.example");
+    let p = patch(json!([{"op":"add","path":"/work/0","value":{"name":"NewCo","position":"CTO","startDate":"2025-01"}}]));
+    lib.patch_cv("main", &p, Author::Agent, None).unwrap();
+    let before = std::fs::read(d.path().join("main.cv.json")).unwrap();
+    assert!(matches!(lib.save_draft("main", &base, &draft), Err(CoreError::PatchFailed(_))));
+    assert_eq!(std::fs::read(d.path().join("main.cv.json")).unwrap(), before);
+}
+
+#[test]
+fn draft_root_add_conflict_detected() {
+    let (d, lib) = setup();
+    let base = lib.read_cv("main").unwrap().cv;
+    assert!(base.get("awards").is_none());
+    let mut draft = base.clone();
+    draft["awards"] = json!([{"title":"Mine"}]);
+    let p = patch(json!([{"op":"add","path":"/awards","value":[{"title":"Agent"}]}]));
+    lib.patch_cv("main", &p, Author::Agent, None).unwrap();
+    let before = std::fs::read(d.path().join("main.cv.json")).unwrap();
+    assert!(matches!(lib.save_draft("main", &base, &draft), Err(CoreError::PatchFailed(_))));
+    assert_eq!(std::fs::read(d.path().join("main.cv.json")).unwrap(), before);
+}
+
+#[test]
+fn draft_root_add_without_conflict_saves() {
+    let (_d, lib) = setup();
+    let base = lib.read_cv("main").unwrap().cv;
+    let mut draft = base.clone();
+    draft["awards"] = json!([{"title":"Mine"}]);
+    draft["work"][1]["url"] = json!("https://user.example");
+    lib.save_draft("main", &base, &draft).unwrap();
+    let cv = lib.read_cv("main").unwrap().cv;
+    assert_eq!(cv["awards"][0]["title"], "Mine");
+    assert_eq!(cv["work"][1]["url"], "https://user.example");
+}
