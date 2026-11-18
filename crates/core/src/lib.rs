@@ -1,5 +1,6 @@
 pub mod config;
 pub mod error;
+pub mod history;
 pub mod library;
 pub mod schema;
 

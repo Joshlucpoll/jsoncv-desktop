@@ -4,7 +4,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::{schema, CoreError};
+use crate::{schema, Author, CoreError};
 
 const SAMPLE: &str = include_str!("../resources/sample.cv.json");
 
@@ -61,10 +61,17 @@ impl Library {
             let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&gi)?;
             std::io::Write::write_all(&mut f, format!("{sep}exports/\n").as_bytes())?;
         }
-        if !root.join(".git").exists() {
+        let fresh = !root.join(".git").exists();
+        if fresh {
             git2::Repository::init(root)?;
         }
-        Ok(Library { root: root.to_path_buf() })
+        let lib = Library { root: root.to_path_buf() };
+        if fresh {
+            // shortcut: stages only main + .gitignore; other pre-existing files are left to the sweep.
+            let paths = [Path::new("main.cv.json"), Path::new(".gitignore")];
+            crate::history::with_lock(root, || crate::history::commit(root, &paths, Author::You, "Create library"))?;
+        }
+        Ok(lib)
     }
 
     pub fn root(&self) -> &Path {
