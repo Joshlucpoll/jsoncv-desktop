@@ -4,7 +4,8 @@ use jsoncv_core::{
     export::{html_to_png, ExportFormat},
     library::Library,
     render::{PageMeta, PageSize, ThemeMeta},
-    schema::SCHEMA, Author, CoreError, SAMPLE_CV, THEME_GUIDE,
+    schema::SCHEMA,
+    Author, CoreError, SAMPLE_CV, THEME_GUIDE,
 };
 use rmcp::{
     handler::server::wrapper::Parameters,
@@ -26,8 +27,18 @@ const INSTRUCTIONS: &str = "Edit jsoncv CVs. Read jsoncv://schema before editing
 
 const RESOURCES: [(&str, &str, &str, &str); 3] = [
     ("jsoncv://schema", "schema", "application/json", SCHEMA),
-    ("jsoncv://theme-guide", "theme-guide", "text/markdown", THEME_GUIDE),
-    ("jsoncv://sample-cv", "sample-cv", "application/json", SAMPLE_CV),
+    (
+        "jsoncv://theme-guide",
+        "theme-guide",
+        "text/markdown",
+        THEME_GUIDE,
+    ),
+    (
+        "jsoncv://sample-cv",
+        "sample-cv",
+        "application/json",
+        SAMPLE_CV,
+    ),
 ];
 
 /// One RFC 6902 operation.
@@ -181,9 +192,9 @@ fn text_err(s: String) -> CallToolResult {
 }
 fn core_err(e: CoreError) -> CallToolResult {
     match e {
-        CoreError::Invalid(errs) => text_err(
-            serde_json::to_string_pretty(&json!({ "errors": errs })).unwrap_or_default(),
-        ),
+        CoreError::Invalid(errs) => {
+            text_err(serde_json::to_string_pretty(&json!({ "errors": errs })).unwrap_or_default())
+        }
         e => text_err(e.to_string()),
     }
 }
@@ -204,33 +215,58 @@ impl JsoncvServer {
 
 #[tool_router(vis = "pub")]
 impl JsoncvServer {
-    #[tool(description = "List all CVs in the library (name, theme, tailored_from, modified_ms, error).")]
+    #[tool(
+        description = "List all CVs in the library (name, theme, tailored_from, modified_ms, error)."
+    )]
     pub async fn list_cvs(&self) -> CallToolResult {
         done(self.lib.list_cvs())
     }
 
     #[tool(description = "Read a CV. Returns {cv, base}. Pass `base` to replace_cv.")]
     pub async fn get_cv(&self, Parameters(a): Parameters<NameArgs>) -> CallToolResult {
-        done(self.lib.read_cv(&a.name).map(|d| json!({ "cv": d.cv, "base": d.base })))
+        done(
+            self.lib
+                .read_cv(&a.name)
+                .map(|d| json!({ "cv": d.cv, "base": d.base })),
+        )
     }
 
-    #[tool(description = "Edit a CV with an RFC 6902 JSON Patch. The result is validated against the schema; invalid results are rejected with per-field errors.")]
+    #[tool(
+        description = "Edit a CV with an RFC 6902 JSON Patch. The result is validated against the schema; invalid results are rejected with per-field errors."
+    )]
     pub async fn update_cv(&self, Parameters(a): Parameters<UpdateCvArgs>) -> CallToolResult {
-        let patch: json_patch::Patch = match serde_json::to_value(&a.patch).and_then(serde_json::from_value) {
-            Ok(p) => p,
-            Err(e) => return text_err(format!("bad patch: {e}")),
-        };
-        done(self.lib.patch_cv(&a.name, &patch, Author::Agent, a.message.as_deref()))
+        let patch: json_patch::Patch =
+            match serde_json::to_value(&a.patch).and_then(serde_json::from_value) {
+                Ok(p) => p,
+                Err(e) => return text_err(format!("bad patch: {e}")),
+            };
+        done(
+            self.lib
+                .patch_cv(&a.name, &patch, Author::Agent, a.message.as_deref()),
+        )
     }
 
-    #[tool(description = "Replace a whole CV. `base` must be the value from get_cv, else the write fails as stale.")]
+    #[tool(
+        description = "Replace a whole CV. `base` must be the value from get_cv, else the write fails as stale."
+    )]
     pub async fn replace_cv(&self, Parameters(a): Parameters<ReplaceCvArgs>) -> CallToolResult {
-        done(self.lib.replace_cv(&a.name, a.cv, &a.base, Author::Agent, a.message.as_deref()))
+        done(
+            self.lib
+                .replace_cv(&a.name, a.cv, &a.base, Author::Agent, a.message.as_deref()),
+        )
     }
 
-    #[tool(description = "Create a tailored CV as `tailored/<name>`, copied from `from` (default `main`).")]
-    pub async fn create_tailored_cv(&self, Parameters(a): Parameters<CreateTailoredArgs>) -> CallToolResult {
-        done(self.lib.create_tailored(&a.name, a.from.as_deref().unwrap_or("main"), Author::Agent))
+    #[tool(
+        description = "Create a tailored CV as `tailored/<name>`, copied from `from` (default `main`)."
+    )]
+    pub async fn create_tailored_cv(
+        &self,
+        Parameters(a): Parameters<CreateTailoredArgs>,
+    ) -> CallToolResult {
+        done(
+            self.lib
+                .create_tailored(&a.name, a.from.as_deref().unwrap_or("main"), Author::Agent),
+        )
     }
 
     #[tool(description = "List versions of a CV, newest first (commit, author, message, time_ms).")]
@@ -238,8 +274,13 @@ impl JsoncvServer {
         done(self.lib.history(&a.name, a.limit.unwrap_or(20)))
     }
 
-    #[tool(description = "Restore a CV to an earlier version. This adds a new version; history is kept.")]
-    pub async fn restore_cv_version(&self, Parameters(a): Parameters<RestoreArgs>) -> CallToolResult {
+    #[tool(
+        description = "Restore a CV to an earlier version. This adds a new version; history is kept."
+    )]
+    pub async fn restore_cv_version(
+        &self,
+        Parameters(a): Parameters<RestoreArgs>,
+    ) -> CallToolResult {
         done(self.lib.restore(&a.name, &a.commit, Author::Agent))
     }
 
@@ -253,7 +294,9 @@ impl JsoncvServer {
         done(self.lib.get_theme(&a.id))
     }
 
-    #[tool(description = "Create or update a custom theme. Returns {render_error, missing}: fix every render_error and consider every missing schema field. Built-in themes are read-only.")]
+    #[tool(
+        description = "Create or update a custom theme. Returns {render_error, missing}: fix every render_error and consider every missing schema field. Built-in themes are read-only."
+    )]
     pub async fn save_theme(&self, Parameters(a): Parameters<SaveThemeArgs>) -> CallToolResult {
         let meta = ThemeMeta {
             name: a.meta.name,
@@ -265,7 +308,10 @@ impl JsoncvServer {
                 },
             },
         };
-        done(self.lib.save_theme(&a.id, &a.template, &a.css, &meta, Author::Agent))
+        done(
+            self.lib
+                .save_theme(&a.id, &a.template, &a.css, &meta, Author::Agent),
+        )
     }
 
     #[tool(description = "Set the theme a CV uses.")]
@@ -273,7 +319,9 @@ impl JsoncvServer {
         done(self.lib.set_cv_theme(&a.name, &a.theme, Author::Agent))
     }
 
-    #[tool(description = "Render the first page of a CV as a PNG image. Needs Chrome or Chromium installed.")]
+    #[tool(
+        description = "Render the first page of a CV as a PNG image. Needs Chrome or Chromium installed."
+    )]
     pub async fn preview(&self, Parameters(a): Parameters<PreviewArgs>) -> CallToolResult {
         let run = async {
             let html = self.lib.render_cv(&a.name, a.theme.as_deref(), None)?;
@@ -282,12 +330,17 @@ impl JsoncvServer {
             html_to_png(&html, size).await
         };
         match run.await {
-            Ok(png) => CallToolResult::success(vec![ContentBlock::image(STANDARD.encode(png), "image/png")]),
+            Ok(png) => CallToolResult::success(vec![ContentBlock::image(
+                STANDARD.encode(png),
+                "image/png",
+            )]),
             Err(e) => core_err(e),
         }
     }
 
-    #[tool(description = "Export a CV to the library's exports folder. format: pdf, html or json. Returns {path}.")]
+    #[tool(
+        description = "Export a CV to the library's exports folder. format: pdf, html or json. Returns {path}."
+    )]
     pub async fn export_cv(&self, Parameters(a): Parameters<ExportArgs>) -> CallToolResult {
         let format = match a.format {
             ExportFormatInput::Pdf => ExportFormat::Pdf,
@@ -302,12 +355,16 @@ impl JsoncvServer {
         )
     }
 
-    #[tool(description = "Add an image or file to the library's assets folder. Give exactly one of `path` (read from disk) or `base64`. Returns {path} to use in the CV, for example basics.image.")]
+    #[tool(
+        description = "Add an image or file to the library's assets folder. Give exactly one of `path` (read from disk) or `base64`. Returns {path} to use in the CV, for example basics.image."
+    )]
     pub async fn add_asset(&self, Parameters(a): Parameters<AddAssetArgs>) -> CallToolResult {
         let bytes = match (&a.path, &a.base64) {
             (Some(p), None) => {
                 match std::fs::metadata(p) {
-                    Ok(m) if m.len() > jsoncv_core::MAX_ASSET_BYTES as u64 => return text_err("bad path: Asset too large (max 20 MB)".into()),
+                    Ok(m) if m.len() > jsoncv_core::MAX_ASSET_BYTES as u64 => {
+                        return text_err("bad path: Asset too large (max 20 MB)".into())
+                    }
                     Err(e) => return text_err(format!("cannot read {p}: {e}")),
                     _ => {}
                 }
@@ -322,15 +379,24 @@ impl JsoncvServer {
             },
             _ => return text_err("give exactly one of `path` or `base64`".into()),
         };
-        done(self.lib.add_asset(&a.name, &bytes, Author::Agent).map(|p| json!({ "path": p })))
+        done(
+            self.lib
+                .add_asset(&a.name, &bytes, Author::Agent)
+                .map(|p| json!({ "path": p })),
+        )
     }
 }
 
 #[tool_handler]
 impl ServerHandler for JsoncvServer {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().enable_resources().build())
-            .with_instructions(INSTRUCTIONS)
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .build(),
+        )
+        .with_instructions(INSTRUCTIONS)
     }
 
     async fn list_resources(
@@ -351,8 +417,9 @@ impl ServerHandler for JsoncvServer {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
-        let contents = resource_contents(&request.uri)
-            .ok_or_else(|| ErrorData::resource_not_found(format!("unknown resource {}", request.uri), None))?;
+        let contents = resource_contents(&request.uri).ok_or_else(|| {
+            ErrorData::resource_not_found(format!("unknown resource {}", request.uri), None)
+        })?;
         Ok(ReadResourceResult::new(vec![contents]).into())
     }
 }
@@ -368,6 +435,10 @@ pub fn resource_contents(uri: &str) -> Option<ResourceContents> {
 }
 
 pub async fn serve_stdio(lib: Library) -> anyhow::Result<()> {
-    JsoncvServer::new(lib).serve(stdio()).await?.waiting().await?;
+    JsoncvServer::new(lib)
+        .serve(stdio())
+        .await?
+        .waiting()
+        .await?;
     Ok(())
 }

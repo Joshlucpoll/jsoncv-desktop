@@ -29,7 +29,10 @@ pub(crate) fn safe_join(base: &Path, rel: &str) -> Option<PathBuf> {
 }
 
 pub(crate) fn data_uri(path: &Path) -> io::Result<String> {
-    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let ext = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
     let mime = match ext.as_str() {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
@@ -42,14 +45,21 @@ pub(crate) fn data_uri(path: &Path) -> io::Result<String> {
         "otf" => "font/otf",
         _ => "application/octet-stream",
     };
-    Ok(format!("data:{mime};base64,{}", STANDARD.encode(std::fs::read(path)?)))
+    Ok(format!(
+        "data:{mime};base64,{}",
+        STANDARD.encode(std::fs::read(path)?)
+    ))
 }
 
 /// `s` must start with `assets/`; returns the data URI if it names an existing file under `<dir>/assets`.
 fn inline_one(s: &str, dir: &Path) -> Option<String> {
     let rest = s.strip_prefix("assets/")?;
     let p = safe_join(&dir.join("assets"), rest)?;
-    if p.is_file() { data_uri(&p).ok() } else { None }
+    if p.is_file() {
+        data_uri(&p).ok()
+    } else {
+        None
+    }
 }
 
 pub(crate) fn inline_cv_assets(cv: &mut Value, root: &Path) {
@@ -68,7 +78,8 @@ pub(crate) fn inline_cv_assets(cv: &mut Value, root: &Path) {
 static URL_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"url\(\s*(?:'(assets/[^']+)'|"(assets/[^"]+)"|(assets/[^)'"\s]+))\s*\)"#).unwrap()
 });
-static ATTR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\b(src|href)="(assets/[^"]+)""#).unwrap());
+static ATTR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\b(src|href)="(assets/[^"]+)""#).unwrap());
 
 pub(crate) fn inline_theme_assets(text: &str, theme_dir: &Path) -> String {
     let out = URL_RE.replace_all(text, |c: &Captures| {
@@ -88,15 +99,25 @@ pub(crate) fn inline_theme_assets(text: &str, theme_dir: &Path) -> String {
 
 fn sanitise(name: &str) -> String {
     let base = name.rsplit(['/', '\\']).next().unwrap_or("");
-    let s: String = base.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')).collect();
+    let s: String = base
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        .collect();
     s.trim_start_matches('.').to_string()
 }
 
 impl Library {
-    pub fn add_asset(&self, file_name: &str, bytes: &[u8], author: Author) -> Result<String, CoreError> {
+    pub fn add_asset(
+        &self,
+        file_name: &str,
+        bytes: &[u8],
+        author: Author,
+    ) -> Result<String, CoreError> {
         let name = sanitise(file_name);
         if name.is_empty() {
-            return Err(CoreError::BadPath(format!("Invalid asset name: {file_name}")));
+            return Err(CoreError::BadPath(format!(
+                "Invalid asset name: {file_name}"
+            )));
         }
         if bytes.len() > MAX_ASSET_BYTES {
             return Err(CoreError::BadPath("Asset too large (max 20 MB)".into()));
@@ -110,7 +131,11 @@ impl Library {
             };
             let mut n = 1;
             let (final_name, exists) = loop {
-                let cand = if n == 1 { name.clone() } else { format!("{stem}-{n}{ext}") };
+                let cand = if n == 1 {
+                    name.clone()
+                } else {
+                    format!("{stem}-{n}{ext}")
+                };
                 match std::fs::read(dir.join(&cand)) {
                     Ok(old) if old == bytes => break (cand, true),
                     Ok(_) => n += 1,
@@ -132,7 +157,12 @@ impl Library {
                     return Err(e.into());
                 }
                 let rel = format!("assets/{final_name}");
-                commit(self.root(), &[Path::new(&rel)], author, &format!("Added asset {final_name}"))?;
+                commit(
+                    self.root(),
+                    &[Path::new(&rel)],
+                    author,
+                    &format!("Added asset {final_name}"),
+                )?;
             }
             Ok(format!("assets/{final_name}"))
         })
@@ -191,11 +221,21 @@ mod tests {
     #[test]
     fn css_font_inlined() {
         let d = root_with("assets/f.woff2", b"wOF2");
-        for css in ["url(assets/f.woff2)", "url('assets/f.woff2')", "url(\"assets/f.woff2\")"] {
+        for css in [
+            "url(assets/f.woff2)",
+            "url('assets/f.woff2')",
+            "url(\"assets/f.woff2\")",
+        ] {
             let out = inline_theme_assets(css, d.path());
             assert!(out.contains("data:font/woff2;base64,"), "{css} -> {out}");
         }
-        let out = inline_theme_assets("<img src=\"assets/f.woff2\"> url(assets/missing.png)", d.path());
-        assert!(out.contains("src=\"data:font/woff2;base64,") && out.contains("url(assets/missing.png)"));
+        let out = inline_theme_assets(
+            "<img src=\"assets/f.woff2\"> url(assets/missing.png)",
+            d.path(),
+        );
+        assert!(
+            out.contains("src=\"data:font/woff2;base64,")
+                && out.contains("url(assets/missing.png)")
+        );
     }
 }

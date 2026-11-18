@@ -37,14 +37,18 @@ pub struct CvDoc {
 }
 
 pub(crate) fn sha_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn valid_slug(s: &str) -> bool {
     let b = s.as_bytes();
     (1..=64).contains(&b.len())
         && (b[0].is_ascii_lowercase() || b[0].is_ascii_digit())
-        && b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
+        && b.iter()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
 }
 
 impl Library {
@@ -63,7 +67,10 @@ impl Library {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
             Err(e) => return Err(e.into()),
         };
-        let has = |pat: &str| cur.split(|b| *b == b'\n').any(|l| l.strip_suffix(b"\r").unwrap_or(l) == pat.as_bytes());
+        let has = |pat: &str| {
+            cur.split(|b| *b == b'\n')
+                .any(|l| l.strip_suffix(b"\r").unwrap_or(l) == pat.as_bytes())
+        };
         let mut add = String::new();
         if !cur.is_empty() && !cur.ends_with(b"\n") {
             add.push('\n');
@@ -73,21 +80,28 @@ impl Library {
         }
         if add.trim() != "" {
             // Append only; existing bytes are never rewritten.
-            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&gi)?;
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&gi)?;
             std::io::Write::write_all(&mut f, add.as_bytes())?;
         }
         let fresh = !root.join(".git").exists();
         if fresh {
             git2::Repository::init(root)?;
         }
-        let lib = Library { root: root.to_path_buf() };
+        let lib = Library {
+            root: root.to_path_buf(),
+        };
         if fresh {
             // shortcut: stages only main + .gitignore; other pre-existing files are left to the sweep.
             let mut paths = vec![Path::new(".gitignore")];
             if crate::history::cv_valid(&main) {
                 paths.push(Path::new("main.cv.json"));
             }
-            crate::history::with_lock(root, || crate::history::commit(root, &paths, Author::You, "Create library"))?;
+            crate::history::with_lock(root, || {
+                crate::history::commit(root, &paths, Author::You, "Create library")
+            })?;
         }
         Ok(lib)
     }
@@ -96,7 +110,10 @@ impl Library {
     /// a moved folder) is an error rather than silently recreated empty.
     pub fn open_configured(configured: &Path, default: &Path) -> Result<Library, CoreError> {
         if configured != default && !configured.exists() {
-            return Err(CoreError::NotFound(format!("library folder {}", configured.display())));
+            return Err(CoreError::NotFound(format!(
+                "library folder {}",
+                configured.display()
+            )));
         }
         Library::open(configured)
     }
@@ -119,7 +136,11 @@ impl Library {
             std::io::ErrorKind::NotFound => CoreError::NotFound(name.to_string()),
             _ => e.into(),
         })?;
-        Ok(CvDoc { name: name.to_string(), cv: serde_json::from_slice(&bytes)?, base: sha_hex(&bytes) })
+        Ok(CvDoc {
+            name: name.to_string(),
+            cv: serde_json::from_slice(&bytes)?,
+            base: sha_hex(&bytes),
+        })
     }
 
     pub fn list_cvs(&self) -> Result<Vec<CvInfo>, CoreError> {
@@ -136,10 +157,16 @@ impl Library {
         let mut out = vec![];
         for name in names {
             let bad = |error: &str| CvInfo {
-                name: name.clone(), theme: None, tailored_from: None, modified_ms: 0, error: Some(error.into()),
+                name: name.clone(),
+                theme: None,
+                tailored_from: None,
+                modified_ms: 0,
+                error: Some(error.into()),
             };
             let Ok(path) = self.cv_path(&name) else {
-                out.push(bad("Invalid file name: use lowercase letters, digits and dashes"));
+                out.push(bad(
+                    "Invalid file name: use lowercase letters, digits and dashes",
+                ));
                 continue;
             };
             let Ok(meta) = std::fs::metadata(&path) else {
@@ -151,13 +178,22 @@ impl Library {
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map_or(0, |d| d.as_millis() as i64);
-            let mut info = CvInfo { name: name.clone(), theme: None, tailored_from: None, modified_ms, error: None };
+            let mut info = CvInfo {
+                name: name.clone(),
+                theme: None,
+                tailored_from: None,
+                modified_ms,
+                error: None,
+            };
             match self.read_cv(&name) {
                 Err(e) => info.error = Some(e.to_string()),
                 Ok(doc) => {
                     if let Err(errs) = schema::validate(&doc.cv) {
                         info.error = Some(
-                            errs.iter().map(|e| format!("{}: {}", e.path, e.message)).collect::<Vec<_>>().join("; "),
+                            errs.iter()
+                                .map(|e| format!("{}: {}", e.path, e.message))
+                                .collect::<Vec<_>>()
+                                .join("; "),
                         );
                     }
                     let meta = &doc.cv["meta"];
@@ -171,7 +207,13 @@ impl Library {
     }
 
     /// Validate, write atomically, commit. Caller holds the lock and has swept.
-    fn write_locked(&self, name: &str, cv: &Value, author: Author, message: &str) -> Result<Saved, CoreError> {
+    fn write_locked(
+        &self,
+        name: &str,
+        cv: &Value,
+        author: Author,
+        message: &str,
+    ) -> Result<Saved, CoreError> {
         let path = self.cv_path(name)?;
         schema::validate(cv).map_err(CoreError::Invalid)?;
         let bytes = (serde_json::to_string_pretty(cv)? + "\n").into_bytes();
@@ -192,10 +234,19 @@ impl Library {
         }
         let rel = format!("{name}.cv.json");
         let commit = commit(&self.root, &[Path::new(&rel)], author, message)?;
-        Ok(Saved { commit, base: sha_hex(&bytes) })
+        Ok(Saved {
+            commit,
+            base: sha_hex(&bytes),
+        })
     }
 
-    fn write_validated(&self, name: &str, cv: &Value, author: Author, message: &str) -> Result<Saved, CoreError> {
+    fn write_validated(
+        &self,
+        name: &str,
+        cv: &Value,
+        author: Author,
+        message: &str,
+    ) -> Result<Saved, CoreError> {
         with_lock(&self.root, || {
             self.sweep_external()?;
             self.write_locked(name, cv, author, message)
@@ -213,7 +264,9 @@ impl Library {
             self.sweep_external()?;
             let mut cv = self.read_cv(name)?.cv;
             json_patch::patch(&mut cv, patch).map_err(|e| CoreError::PatchFailed(e.to_string()))?;
-            let msg = message.map(String::from).unwrap_or_else(|| default_message(patch));
+            let msg = message
+                .map(String::from)
+                .unwrap_or_else(|| default_message(patch));
             self.write_locked(name, &cv, author, &msg)
         })
     }
@@ -235,7 +288,12 @@ impl Library {
         })
     }
 
-    pub fn save_draft(&self, name: &str, base_cv: &Value, draft: &Value) -> Result<Saved, CoreError> {
+    pub fn save_draft(
+        &self,
+        name: &str,
+        base_cv: &Value,
+        draft: &Value,
+    ) -> Result<Saved, CoreError> {
         let ops = serde_json::to_value(json_patch::diff(base_cv, draft))?;
         let ops = ops.as_array().cloned().unwrap_or_default();
         // Each op gets a test just before it, valued from base_cv with earlier ops applied
@@ -260,11 +318,14 @@ impl Library {
                 _ => None,
             };
             if let Some(g) = guard {
-                let v = work.pointer(g).ok_or_else(|| CoreError::PatchFailed(format!("no value at {g}")))?;
+                let v = work
+                    .pointer(g)
+                    .ok_or_else(|| CoreError::PatchFailed(format!("no value at {g}")))?;
                 all.push(serde_json::json!({"op":"test","path":g,"value":v}));
             }
             let one: json_patch::Patch = serde_json::from_value(Value::Array(vec![o.clone()]))?;
-            json_patch::patch(&mut work, &one).map_err(|e| CoreError::PatchFailed(e.to_string()))?;
+            json_patch::patch(&mut work, &one)
+                .map_err(|e| CoreError::PatchFailed(e.to_string()))?;
             all.push(o);
         }
         let patch: json_patch::Patch = serde_json::from_value(Value::Array(all))?;
@@ -272,9 +333,12 @@ impl Library {
             self.sweep_external()?;
             let mut cv = self.read_cv(name)?.cv;
             if let Some(p) = root_adds.iter().find(|p| cv.pointer(p).is_some()) {
-                return Err(CoreError::PatchFailed(format!("{p} was added by someone else")));
+                return Err(CoreError::PatchFailed(format!(
+                    "{p} was added by someone else"
+                )));
             }
-            json_patch::patch(&mut cv, &patch).map_err(|e| CoreError::PatchFailed(e.to_string()))?;
+            json_patch::patch(&mut cv, &patch)
+                .map_err(|e| CoreError::PatchFailed(e.to_string()))?;
             self.write_locked(name, &cv, Author::You, &default_message(&patch))
         })
     }
@@ -289,7 +353,12 @@ impl Library {
         self.write_validated(name, &cv, author, &format!("Restored version {}", &id[..7]))
     }
 
-    pub fn create_tailored(&self, slug: &str, from: &str, author: Author) -> Result<CvInfo, CoreError> {
+    pub fn create_tailored(
+        &self,
+        slug: &str,
+        from: &str,
+        author: Author,
+    ) -> Result<CvInfo, CoreError> {
         let name = format!("tailored/{slug}");
         let target = self.cv_path(&name)?;
         with_lock(&self.root, || {
@@ -298,24 +367,39 @@ impl Library {
                 return Err(CoreError::BadName(format!("{name} already exists")));
             }
             let mut cv = self.read_cv(from)?.cv;
-            let head = git2::Repository::open(&self.root)?.head()?.peel_to_commit()?.id().to_string();
+            let head = git2::Repository::open(&self.root)?
+                .head()?
+                .peel_to_commit()?
+                .id()
+                .to_string();
             cv.as_object_mut()
                 .ok_or_else(|| CoreError::PatchFailed("CV is not an object".into()))?
                 .entry("meta")
                 .or_insert_with(|| serde_json::json!({}))
                 .as_object_mut()
                 .ok_or_else(|| CoreError::PatchFailed("meta is not an object".into()))?
-                .insert("tailoredFrom".into(), serde_json::json!({"cv": from, "commit": head}));
+                .insert(
+                    "tailoredFrom".into(),
+                    serde_json::json!({"cv": from, "commit": head}),
+                );
             self.write_locked(&name, &cv, author, &format!("Created {name} from {from}"))
         })?;
         self.info(&name)
     }
 
     fn info(&self, name: &str) -> Result<CvInfo, CoreError> {
-        self.list_cvs()?.into_iter().find(|i| i.name == name).ok_or_else(|| CoreError::NotFound(name.into()))
+        self.list_cvs()?
+            .into_iter()
+            .find(|i| i.name == name)
+            .ok_or_else(|| CoreError::NotFound(name.into()))
     }
 
-    pub fn rename_cv(&self, name: &str, new_slug: &str, author: Author) -> Result<CvInfo, CoreError> {
+    pub fn rename_cv(
+        &self,
+        name: &str,
+        new_slug: &str,
+        author: Author,
+    ) -> Result<CvInfo, CoreError> {
         let old = self.cv_path(name)?;
         if name == "main" {
             return Err(CoreError::ReadOnly("main cannot be renamed".into()));
@@ -332,7 +416,12 @@ impl Library {
             }
             std::fs::rename(&old, &new)?;
             let (a, b) = (format!("{name}.cv.json"), format!("{new_name}.cv.json"));
-            commit(&self.root, &[Path::new(&a), Path::new(&b)], author, &format!("Renamed {name} to {new_name}"))?;
+            commit(
+                &self.root,
+                &[Path::new(&a), Path::new(&b)],
+                author,
+                &format!("Renamed {name} to {new_name}"),
+            )?;
             Ok(())
         })?;
         self.info(&new_name)
@@ -350,17 +439,29 @@ impl Library {
                 _ => e.into(),
             })?;
             let rel = format!("{name}.cv.json");
-            commit(&self.root, &[Path::new(&rel)], author, &format!("Deleted {name}"))?;
+            commit(
+                &self.root,
+                &[Path::new(&rel)],
+                author,
+                &format!("Deleted {name}"),
+            )?;
             Ok(())
         })
     }
 
-    pub fn set_cv_theme(&self, name: &str, theme_id: &str, author: Author) -> Result<Saved, CoreError> {
+    pub fn set_cv_theme(
+        &self,
+        name: &str,
+        theme_id: &str,
+        author: Author,
+    ) -> Result<Saved, CoreError> {
         with_lock(&self.root, || {
             self.sweep_external()?;
             let mut cv = self.read_cv(name)?.cv;
             self.get_theme(theme_id)?;
-            let obj = cv.as_object_mut().ok_or_else(|| CoreError::PatchFailed("CV is not an object".into()))?;
+            let obj = cv
+                .as_object_mut()
+                .ok_or_else(|| CoreError::PatchFailed("CV is not an object".into()))?;
             obj.entry("meta")
                 .or_insert_with(|| serde_json::json!({}))
                 .as_object_mut()
@@ -373,9 +474,18 @@ impl Library {
 
 fn default_message(patch: &json_patch::Patch) -> String {
     let mut keys: Vec<String> = vec![];
-    for op in serde_json::to_value(patch).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default() {
+    for op in serde_json::to_value(patch)
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default()
+    {
         let path = op["path"].as_str().unwrap_or("");
-        let k = path.trim_start_matches('/').split('/').next().filter(|k| !k.is_empty()).unwrap_or("cv");
+        let k = path
+            .trim_start_matches('/')
+            .split('/')
+            .next()
+            .filter(|k| !k.is_empty())
+            .unwrap_or("cv");
         let k = k.replace("~1", "/").replace("~0", "~");
         if !keys.contains(&k) {
             keys.push(k);

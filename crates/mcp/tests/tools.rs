@@ -10,7 +10,10 @@ fn server() -> (tempfile::TempDir, JsoncvServer) {
 }
 
 fn text(r: &CallToolResult) -> String {
-    serde_json::to_value(&r.content[0]).unwrap()["text"].as_str().unwrap().to_string()
+    serde_json::to_value(&r.content[0]).unwrap()["text"]
+        .as_str()
+        .unwrap()
+        .to_string()
 }
 
 #[tokio::test]
@@ -19,7 +22,10 @@ async fn update_cv_invalid_returns_field_errors() {
     let r = s
         .update_cv(Parameters(UpdateCvArgs {
             name: "main".into(),
-            patch: vec![serde_json::from_value(json!({"op":"replace","path":"/work/0/startDate","value":"not a date"})).unwrap()],
+            patch: vec![serde_json::from_value(
+                json!({"op":"replace","path":"/work/0/startDate","value":"not a date"}),
+            )
+            .unwrap()],
             message: None,
         }))
         .await;
@@ -31,7 +37,11 @@ async fn update_cv_invalid_returns_field_errors() {
 #[tokio::test]
 async fn get_then_replace_roundtrip() {
     let (_d, s) = server();
-    let r = s.get_cv(Parameters(NameArgs { name: "main".into() })).await;
+    let r = s
+        .get_cv(Parameters(NameArgs {
+            name: "main".into(),
+        }))
+        .await;
     assert_eq!(r.is_error, Some(false));
     let v: Value = serde_json::from_str(&text(&r)).unwrap();
     let mut cv = v["cv"].clone();
@@ -45,7 +55,11 @@ async fn get_then_replace_roundtrip() {
         }))
         .await;
     assert_eq!(r.is_error, Some(false), "{}", text(&r));
-    let r = s.get_cv(Parameters(NameArgs { name: "main".into() })).await;
+    let r = s
+        .get_cv(Parameters(NameArgs {
+            name: "main".into(),
+        }))
+        .await;
     let v: Value = serde_json::from_str(&text(&r)).unwrap();
     assert_eq!(v["cv"]["basics"]["name"], "Changed Name");
 }
@@ -58,7 +72,10 @@ async fn save_theme_returns_report() {
             id: "mine".into(),
             template: "<h1>{{ cv.basics.name }}</h1>".into(),
             css: "h1{}".into(),
-            meta: serde_json::from_value(json!({"name":"Mine","description":"d","page":{"size":"A4"}})).unwrap(),
+            meta: serde_json::from_value(
+                json!({"name":"Mine","description":"d","page":{"size":"A4"}}),
+            )
+            .unwrap(),
         }))
         .await;
     assert_eq!(r.is_error, Some(false), "{}", text(&r));
@@ -70,29 +87,59 @@ async fn save_theme_returns_report() {
 #[tokio::test]
 async fn add_asset_needs_exactly_one_source() {
     let (_d, s) = server();
-    let r = s.add_asset(Parameters(AddAssetArgs { name: "a.png".into(), path: None, base64: None })).await;
+    let r = s
+        .add_asset(Parameters(AddAssetArgs {
+            name: "a.png".into(),
+            path: None,
+            base64: None,
+        }))
+        .await;
     assert_eq!(r.is_error, Some(true));
-    let r = s.add_asset(Parameters(AddAssetArgs { name: "a.png".into(), path: None, base64: Some("aGk=".into()) })).await;
+    let r = s
+        .add_asset(Parameters(AddAssetArgs {
+            name: "a.png".into(),
+            path: None,
+            base64: Some("aGk=".into()),
+        }))
+        .await;
     let v: Value = serde_json::from_str(&text(&r)).unwrap();
     assert_eq!(v["path"], "assets/a.png");
 }
 
 #[test]
 fn tools_list_has_14_tools_with_exact_names() {
-    let mut names: Vec<String> =
-        JsoncvServer::tool_router().list_all().into_iter().map(|t| t.name.to_string()).collect();
+    let mut names: Vec<String> = JsoncvServer::tool_router()
+        .list_all()
+        .into_iter()
+        .map(|t| t.name.to_string())
+        .collect();
     names.sort();
     let mut want = vec![
-        "list_cvs", "get_cv", "update_cv", "replace_cv", "create_tailored_cv", "cv_history",
-        "restore_cv_version", "list_themes", "get_theme", "save_theme", "set_cv_theme", "preview",
-        "export_cv", "add_asset",
+        "list_cvs",
+        "get_cv",
+        "update_cv",
+        "replace_cv",
+        "create_tailored_cv",
+        "cv_history",
+        "restore_cv_version",
+        "list_themes",
+        "get_theme",
+        "save_theme",
+        "set_cv_theme",
+        "preview",
+        "export_cv",
+        "add_asset",
     ];
     want.sort();
     assert_eq!(names, want);
 }
 
 fn schema_of(name: &str) -> Value {
-    let t = JsoncvServer::tool_router().list_all().into_iter().find(|t| t.name == name).unwrap();
+    let t = JsoncvServer::tool_router()
+        .list_all()
+        .into_iter()
+        .find(|t| t.name == name)
+        .unwrap();
     serde_json::to_value(&*t.input_schema).unwrap()
 }
 

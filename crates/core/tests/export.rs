@@ -11,27 +11,42 @@ fn lib_with_photo() -> (tempfile::TempDir, Library) {
     std::fs::write(d.path().join("assets/me.png"), b"\x89PNG\r\n\x1a\nfake").unwrap();
     let cv = json!({"basics":{"name":"Ada Lovelace","image":"assets/me.png"}});
     let base = lib.read_cv("main").unwrap().base;
-    lib.replace_cv("main", cv, &base, Author::You, None).unwrap();
+    lib.replace_cv("main", cv, &base, Author::You, None)
+        .unwrap();
     (d, lib)
 }
 
 #[tokio::test]
 async fn html_export_is_self_contained() {
     let (d, lib) = lib_with_photo();
-    let p = lib.export("main", ExportFormat::Html, Some("builtin:classic")).await.unwrap();
+    let p = lib
+        .export("main", ExportFormat::Html, Some("builtin:classic"))
+        .await
+        .unwrap();
     assert_eq!(p, d.path().join("exports/main-classic.html"));
     let html = std::fs::read_to_string(p).unwrap();
     // minijinja autoescape writes the "/" in the data URI as &#x2f;, which browsers decode.
-    assert!(html.replace("&#x2f;", "/").contains("data:image/png;base64,") && !html.contains("assets/"), "{html}");
+    assert!(
+        html.replace("&#x2f;", "/")
+            .contains("data:image/png;base64,")
+            && !html.contains("assets/"),
+        "{html}"
+    );
 }
 
 #[tokio::test]
 async fn export_uses_effective_theme_and_flattens_name() {
     let (d, lib) = lib_with_photo();
     lib.create_tailored("acme", "main", Author::You).unwrap();
-    let p = lib.export("tailored/acme", ExportFormat::Html, None).await.unwrap();
+    let p = lib
+        .export("tailored/acme", ExportFormat::Html, None)
+        .await
+        .unwrap();
     assert_eq!(p, d.path().join("exports/tailored-acme-classic.html"));
-    let g = lib.export("tailored/acme", ExportFormat::Json, None).await.unwrap();
+    let g = lib
+        .export("tailored/acme", ExportFormat::Json, None)
+        .await
+        .unwrap();
     assert_eq!(g, d.path().join("exports/tailored-acme.json"));
 }
 
@@ -39,7 +54,10 @@ async fn export_uses_effective_theme_and_flattens_name() {
 async fn json_export_matches_file() {
     let (d, lib) = lib_with_photo();
     let p = lib.export("main", ExportFormat::Json, None).await.unwrap();
-    assert_eq!(std::fs::read(p).unwrap(), std::fs::read(d.path().join("main.cv.json")).unwrap());
+    assert_eq!(
+        std::fs::read(p).unwrap(),
+        std::fs::read(d.path().join("main.cv.json")).unwrap()
+    );
 }
 
 #[tokio::test]
@@ -65,13 +83,19 @@ fn dims(png: &[u8]) -> (u32, u32) {
 #[tokio::test]
 async fn export_json_rejects_bad_name() {
     let (_d, lib) = lib_with_photo();
-    assert!(matches!(lib.export("../x", ExportFormat::Json, None).await, Err(jsoncv_core::CoreError::BadName(_))));
+    assert!(matches!(
+        lib.export("../x", ExportFormat::Json, None).await,
+        Err(jsoncv_core::CoreError::BadName(_))
+    ));
 }
 
 #[tokio::test]
 async fn export_json_missing_cv_not_found() {
     let (_d, lib) = lib_with_photo();
-    assert!(matches!(lib.export("tailored/nope", ExportFormat::Json, None).await, Err(jsoncv_core::CoreError::NotFound(_))));
+    assert!(matches!(
+        lib.export("tailored/nope", ExportFormat::Json, None).await,
+        Err(jsoncv_core::CoreError::NotFound(_))
+    ));
 }
 
 #[tokio::test]
@@ -80,9 +104,13 @@ async fn png_preview_is_png() {
         eprintln!("skip: no browser");
         return;
     }
-    let png = html_to_png("<html><body>hi</body></html>", PageSize::A4).await.unwrap();
+    let png = html_to_png("<html><body>hi</body></html>", PageSize::A4)
+        .await
+        .unwrap();
     assert_eq!(dims(&png), (1588, 2246));
-    let png = html_to_png("<html><body>hi</body></html>", PageSize::Letter).await.unwrap();
+    let png = html_to_png("<html><body>hi</body></html>", PageSize::Letter)
+        .await
+        .unwrap();
     assert_eq!(dims(&png), (1632, 2112));
 }
 
@@ -111,10 +139,22 @@ async fn pdf_paper_falls_back_to_theme_size() {
         let i = s.find("/MediaBox").expect("MediaBox");
         s[i..i + 40].to_string()
     };
-    html_to_pdf("<html><body>hi</body></html>", &out, PageSize::A4).await.unwrap();
-    assert!(media(std::fs::read(&out).unwrap()).contains("595."), "{}", media(std::fs::read(&out).unwrap()));
-    html_to_pdf("<html><body>hi</body></html>", &out, PageSize::Letter).await.unwrap();
-    assert!(media(std::fs::read(&out).unwrap()).contains("612"), "{}", media(std::fs::read(&out).unwrap()));
+    html_to_pdf("<html><body>hi</body></html>", &out, PageSize::A4)
+        .await
+        .unwrap();
+    assert!(
+        media(std::fs::read(&out).unwrap()).contains("595."),
+        "{}",
+        media(std::fs::read(&out).unwrap())
+    );
+    html_to_pdf("<html><body>hi</body></html>", &out, PageSize::Letter)
+        .await
+        .unwrap();
+    assert!(
+        media(std::fs::read(&out).unwrap()).contains("612"),
+        "{}",
+        media(std::fs::read(&out).unwrap())
+    );
     let html = "<html><body>hi<script>while(true){}</script></body></html>";
     html_to_pdf(html, &out, PageSize::A4).await.unwrap();
     assert!(std::fs::read(&out).unwrap().starts_with(b"%PDF"));

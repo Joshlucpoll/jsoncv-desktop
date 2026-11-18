@@ -20,16 +20,25 @@ fn open_creates_layout() {
 fn open_existing_folder_preserves_content() {
     let d = TempDir::new().unwrap();
     let repo = git2::Repository::init(d.path()).unwrap();
-    std::fs::write(d.path().join("main.cv.json"), "{\"basics\":{\"name\":\"Z\"}}\n").unwrap();
+    std::fs::write(
+        d.path().join("main.cv.json"),
+        "{\"basics\":{\"name\":\"Z\"}}\n",
+    )
+    .unwrap();
     std::fs::write(d.path().join("notes.txt"), "hi").unwrap();
     let sig = git2::Signature::now("You", "jsoncv@localhost").unwrap();
     let mut idx = repo.index().unwrap();
     idx.add_path(std::path::Path::new("main.cv.json")).unwrap();
     let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
-    let head = repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
+    let head = repo
+        .commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+        .unwrap();
 
     Library::open(d.path()).unwrap();
-    assert_eq!(std::fs::read(d.path().join("main.cv.json")).unwrap(), b"{\"basics\":{\"name\":\"Z\"}}\n");
+    assert_eq!(
+        std::fs::read(d.path().join("main.cv.json")).unwrap(),
+        b"{\"basics\":{\"name\":\"Z\"}}\n"
+    );
     assert_eq!(std::fs::read(d.path().join("notes.txt")).unwrap(), b"hi");
     let repo = git2::Repository::open(d.path()).unwrap();
     assert_eq!(repo.head().unwrap().peel_to_commit().unwrap().id(), head);
@@ -69,8 +78,15 @@ fn bad_names_rejected() {
 
 #[test]
 fn sync_folder_detection() {
-    let home = directories::BaseDirs::new().unwrap().home_dir().to_path_buf();
-    for p in ["Library/Mobile Documents/x", "Library/CloudStorage/Dropbox/x", "Dropbox/x"] {
+    let home = directories::BaseDirs::new()
+        .unwrap()
+        .home_dir()
+        .to_path_buf();
+    for p in [
+        "Library/Mobile Documents/x",
+        "Library/CloudStorage/Dropbox/x",
+        "Dropbox/x",
+    ] {
         assert!(is_in_sync_folder(&home.join(p)), "{p}");
     }
     assert!(!is_in_sync_folder(&home.join("Documents/CVs")));
@@ -135,11 +151,20 @@ fn open_configured_refuses_missing_non_default() {
     let d = TempDir::new().unwrap();
     let default = d.path().join("default");
     let gone = d.path().join("unplugged-drive/CVs");
-    assert!(matches!(Library::open_configured(&gone, &default), Err(CoreError::NotFound(_))));
+    assert!(matches!(
+        Library::open_configured(&gone, &default),
+        Err(CoreError::NotFound(_))
+    ));
     assert!(!gone.exists());
     // The default is created on first run; an existing configured folder opens.
-    assert_eq!(Library::open_configured(&default, &default).unwrap().root(), default);
+    assert_eq!(
+        Library::open_configured(&default, &default).unwrap().root(),
+        default
+    );
     let other = d.path().join("other");
     std::fs::create_dir(&other).unwrap();
-    assert_eq!(Library::open_configured(&other, &default).unwrap().root(), other);
+    assert_eq!(
+        Library::open_configured(&other, &default).unwrap().root(),
+        other
+    );
 }

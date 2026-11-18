@@ -111,7 +111,8 @@ fn valid_theme_id(s: &str) -> bool {
     let b = s.as_bytes();
     (1..=64).contains(&b.len())
         && (b[0].is_ascii_lowercase() || b[0].is_ascii_digit())
-        && b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
+        && b.iter()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
 }
 
 fn nf(name: &str) -> impl Fn(std::io::Error) -> CoreError + '_ {
@@ -133,7 +134,10 @@ impl Library {
     pub fn list_themes(&self) -> Result<Vec<ThemeInfo>, CoreError> {
         let mut out: Vec<ThemeInfo> = builtin_themes().iter().map(|b| b.files().info).collect();
         let mut ids: Vec<String> = match std::fs::read_dir(self.root().join("themes")) {
-            Ok(rd) => rd.filter_map(|e| e.ok()?.file_name().into_string().ok()).filter(|id| valid_theme_id(id)).collect(),
+            Ok(rd) => rd
+                .filter_map(|e| e.ok()?.file_name().into_string().ok())
+                .filter(|id| valid_theme_id(id))
+                .collect(),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
             Err(e) => return Err(e.into()),
         };
@@ -155,9 +159,14 @@ impl Library {
                 .ok_or_else(|| CoreError::NotFound(id.to_string()));
         }
         let dir = self.theme_dir(id)?;
-        let meta: ThemeMeta = serde_json::from_slice(&std::fs::read(dir.join("theme.json")).map_err(nf(id))?)?;
+        let meta: ThemeMeta =
+            serde_json::from_slice(&std::fs::read(dir.join("theme.json")).map_err(nf(id))?)?;
         Ok(ThemeFiles {
-            info: ThemeInfo { id: id.into(), builtin: false, meta },
+            info: ThemeInfo {
+                id: id.into(),
+                builtin: false,
+                meta,
+            },
             template: std::fs::read_to_string(dir.join("template.html.j2")).map_err(nf(id))?,
             css: std::fs::read_to_string(dir.join("style.css")).map_err(nf(id))?,
         })
@@ -176,18 +185,27 @@ impl Library {
         author: Author,
     ) -> Result<ThemeReport, CoreError> {
         if id.starts_with("builtin:") {
-            return Err(CoreError::ReadOnly(format!("{id} is a built-in theme; duplicate it to edit")));
+            return Err(CoreError::ReadOnly(format!(
+                "{id} is a built-in theme; duplicate it to edit"
+            )));
         }
         let dir = self.theme_dir(id)?;
         let meta_json = serde_json::to_string_pretty(meta)? + "\n";
         with_lock(self.root(), || {
             self.sweep_external()?;
             std::fs::create_dir_all(&dir)?;
-            let files = [("template.html.j2", template), ("style.css", css), ("theme.json", meta_json.as_str())];
+            let files = [
+                ("template.html.j2", template),
+                ("style.css", css),
+                ("theme.json", meta_json.as_str()),
+            ];
             for (f, body) in files {
                 write_atomic(&dir.join(f), body.as_bytes())?;
             }
-            let rels: Vec<String> = files.iter().map(|(f, _)| format!("themes/{id}/{f}")).collect();
+            let rels: Vec<String> = files
+                .iter()
+                .map(|(f, _)| format!("themes/{id}/{f}"))
+                .collect();
             let paths: Vec<&Path> = rels.iter().map(Path::new).collect();
             commit(self.root(), &paths, author, &format!("Saved theme {id}"))?;
             Ok(())
@@ -195,7 +213,12 @@ impl Library {
         report(template)
     }
 
-    pub fn duplicate_theme(&self, id: &str, new_id: &str, author: Author) -> Result<ThemeInfo, CoreError> {
+    pub fn duplicate_theme(
+        &self,
+        id: &str,
+        new_id: &str,
+        author: Author,
+    ) -> Result<ThemeInfo, CoreError> {
         let src = self.get_theme(id)?;
         if new_id.starts_with("builtin:") {
             return Err(CoreError::BadName(new_id.to_string()));
@@ -207,19 +230,42 @@ impl Library {
                 return Err(CoreError::BadName(format!("Theme {new_id} already exists")));
             }
             let res = (|| {
-            std::fs::create_dir_all(&dir)?;
-            let meta = ThemeMeta { name: format!("{} copy", src.info.meta.name), ..src.info.meta.clone() };
-            write_atomic(&dir.join("template.html.j2"), src.template.as_bytes())?;
-            write_atomic(&dir.join("style.css"), src.css.as_bytes())?;
-            write_atomic(&dir.join("theme.json"), (serde_json::to_string_pretty(&meta)? + "\n").as_bytes())?;
-            let mut rels = vec!["template.html.j2".to_string(), "style.css".into(), "theme.json".into()];
-            if !src.info.builtin {
-                copy_tree(&self.theme_dir(id)?.join("assets"), &dir.join("assets"), "assets", &mut rels)?;
-            }
-            let rels: Vec<String> = rels.iter().map(|r| format!("themes/{new_id}/{r}")).collect();
-            let paths: Vec<&Path> = rels.iter().map(Path::new).collect();
-            commit(self.root(), &paths, author, &format!("Duplicated theme {id} as {new_id}"))?;
-            Ok(())
+                std::fs::create_dir_all(&dir)?;
+                let meta = ThemeMeta {
+                    name: format!("{} copy", src.info.meta.name),
+                    ..src.info.meta.clone()
+                };
+                write_atomic(&dir.join("template.html.j2"), src.template.as_bytes())?;
+                write_atomic(&dir.join("style.css"), src.css.as_bytes())?;
+                write_atomic(
+                    &dir.join("theme.json"),
+                    (serde_json::to_string_pretty(&meta)? + "\n").as_bytes(),
+                )?;
+                let mut rels = vec![
+                    "template.html.j2".to_string(),
+                    "style.css".into(),
+                    "theme.json".into(),
+                ];
+                if !src.info.builtin {
+                    copy_tree(
+                        &self.theme_dir(id)?.join("assets"),
+                        &dir.join("assets"),
+                        "assets",
+                        &mut rels,
+                    )?;
+                }
+                let rels: Vec<String> = rels
+                    .iter()
+                    .map(|r| format!("themes/{new_id}/{r}"))
+                    .collect();
+                let paths: Vec<&Path> = rels.iter().map(Path::new).collect();
+                commit(
+                    self.root(),
+                    &paths,
+                    author,
+                    &format!("Duplicated theme {id} as {new_id}"),
+                )?;
+                Ok(())
             })();
             if res.is_err() {
                 let _ = std::fs::remove_dir_all(&dir); // don't leave a half-copied theme behind
@@ -240,11 +286,17 @@ impl Library {
         let mut cv = cv.clone();
         inline_cv_assets(&mut cv, self.root());
         let body = environment()
-            .render_str(&template, minijinja::context! { cv => Value::from(minijinja::value::Serde(&cv)) })
+            .render_str(
+                &template,
+                minijinja::context! { cv => Value::from(minijinja::value::Serde(&cv)) },
+            )
             .map_err(render_error)?;
         static STYLE_END: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)</style").unwrap());
         static HEAD_END: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)</head>").unwrap());
-        let style = format!("<style>{}</style>", STYLE_END.replace_all(&css, r"<\/style"));
+        let style = format!(
+            "<style>{}</style>",
+            STYLE_END.replace_all(&css, r"<\/style")
+        );
         Ok(match HEAD_END.find(&body).map(|m| m.start()) {
             Some(i) => format!("{}{style}{}", &body[..i], &body[i..]),
             None => format!(
@@ -253,7 +305,12 @@ impl Library {
         })
     }
 
-    pub fn render_cv(&self, name: &str, theme: Option<&str>, commit: Option<&str>) -> Result<String, CoreError> {
+    pub fn render_cv(
+        &self,
+        name: &str,
+        theme: Option<&str>,
+        commit: Option<&str>,
+    ) -> Result<String, CoreError> {
         let cv = match commit {
             Some(sha) => self.read_cv_at(name, sha)?,
             None => self.read_cv(name)?.cv,
@@ -267,14 +324,20 @@ impl Library {
         self.resolve_theme(&self.read_cv(name)?.cv, theme)
     }
 
-    fn resolve_theme(&self, cv: &serde_json::Value, theme: Option<&str>) -> Result<String, CoreError> {
+    fn resolve_theme(
+        &self,
+        cv: &serde_json::Value,
+        theme: Option<&str>,
+    ) -> Result<String, CoreError> {
         if let Some(id) = theme {
             return Ok(id.to_string());
         }
         let id = cv["meta"]["theme"].as_str().unwrap_or("builtin:classic");
         match self.get_theme(id) {
             // Only a stale or hand-edited meta.theme falls back; an explicit choice reports its error.
-            Err(CoreError::NotFound(_) | CoreError::BadName(_)) if id != "builtin:classic" => Ok("builtin:classic".into()),
+            Err(CoreError::NotFound(_) | CoreError::BadName(_)) if id != "builtin:classic" => {
+                Ok("builtin:classic".into())
+            }
             Err(e) => Err(e),
             Ok(_) => Ok(id.to_string()),
         }
@@ -283,14 +346,24 @@ impl Library {
 
 fn report(template: &str) -> Result<ThemeReport, CoreError> {
     match missing_fields(template) {
-        Ok(missing) => Ok(ThemeReport { render_error: None, missing }),
-        Err(CoreError::Render(e)) => Ok(ThemeReport { render_error: Some(e), missing: vec![] }),
+        Ok(missing) => Ok(ThemeReport {
+            render_error: None,
+            missing,
+        }),
+        Err(CoreError::Render(e)) => Ok(ThemeReport {
+            render_error: Some(e),
+            missing: vec![],
+        }),
         Err(e) => Err(e),
     }
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_file_name(format!(".{}.tmp-{}", path.file_name().unwrap().to_string_lossy(), std::process::id()));
+    let tmp = path.with_file_name(format!(
+        ".{}.tmp-{}",
+        path.file_name().unwrap().to_string_lossy(),
+        std::process::id()
+    ));
     let res = (|| {
         let mut f = std::fs::File::create(&tmp)?;
         std::io::Write::write_all(&mut f, bytes)?;
@@ -342,7 +415,9 @@ pub(crate) fn environment() -> Environment<'static> {
     env.add_function("format_date", |v: Value, fmt: String| format_date(&v, &fmt));
     env.add_filter("markdown", markdown);
     env.add_filter("strip_scheme", strip_scheme);
-    env.add_filter("safe_url", |u: Option<String>| safe_url(u.unwrap_or_default().into()).to_string());
+    env.add_filter("safe_url", |u: Option<String>| {
+        safe_url(u.unwrap_or_default().into()).to_string()
+    });
     env
 }
 
@@ -362,11 +437,25 @@ pub(crate) fn format_date(v: &Value, fmt: &str) -> String {
             _ => None,
         }
     };
-    let (Some(Some(y)), Some(m), Some(d), true) = (num(0, 4, 0), num(1, 2, 12), num(2, 2, 31), parts.len() <= 3) else {
+    let (Some(Some(y)), Some(m), Some(d), true) =
+        (num(0, 4, 0), num(1, 2, 12), num(2, 2, 31), parts.len() <= 3)
+    else {
         return raw;
     };
-    const MONTHS: [&str; 12] =
-        ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const MONTHS: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
     let mut out = String::new();
     let mut chars = fmt.chars().peekable();
     while let Some(c) = chars.next() {
@@ -401,12 +490,28 @@ fn markdown(text: Option<String>) -> Value {
     let text = text.unwrap_or_default();
     let events = Parser::new(&text).map(|e| match e {
         Event::Html(s) | Event::InlineHtml(s) => Event::Text(s),
-        Event::Start(Tag::Link { link_type, dest_url, title, id }) => {
-            Event::Start(Tag::Link { link_type, dest_url: safe_url(dest_url), title, id })
-        }
-        Event::Start(Tag::Image { link_type, dest_url, title, id }) => {
-            Event::Start(Tag::Image { link_type, dest_url: safe_url(dest_url), title, id })
-        }
+        Event::Start(Tag::Link {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => Event::Start(Tag::Link {
+            link_type,
+            dest_url: safe_url(dest_url),
+            title,
+            id,
+        }),
+        Event::Start(Tag::Image {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => Event::Start(Tag::Image {
+            link_type,
+            dest_url: safe_url(dest_url),
+            title,
+            id,
+        }),
         e => e,
     });
     let mut out = String::new();
@@ -417,12 +522,23 @@ fn markdown(text: Option<String>) -> Value {
 /// Allow only http(s), mailto, tel or scheme-less (relative / `#`) destinations.
 fn safe_url(u: pulldown_cmark::CowStr<'_>) -> pulldown_cmark::CowStr<'_> {
     // Browsers ignore whitespace/control chars inside a scheme, so drop them before checking.
-    let t: String = u.chars().filter(|c| !c.is_whitespace() && !c.is_control()).collect::<String>().to_lowercase();
-    let scheme = t.split(['/', '?', '#']).next().unwrap_or("").split_once(':').map(|(s, _)| s);
+    let t: String = u
+        .chars()
+        .filter(|c| !c.is_whitespace() && !c.is_control())
+        .collect::<String>()
+        .to_lowercase();
+    let scheme = t
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .split_once(':')
+        .map(|(s, _)| s);
     // Inlined local images arrive as data: URIs; allow raster/SVG images only.
-    let data_img = ["png", "jpeg", "gif", "webp", "svg+xml"]
-        .iter()
-        .any(|m| t.strip_prefix("data:image/").and_then(|r| r.strip_prefix(m)).is_some_and(|r| r.starts_with([';', ','])));
+    let data_img = ["png", "jpeg", "gif", "webp", "svg+xml"].iter().any(|m| {
+        t.strip_prefix("data:image/")
+            .and_then(|r| r.strip_prefix(m))
+            .is_some_and(|r| r.starts_with([';', ',']))
+    });
     match scheme {
         None | Some("http" | "https" | "mailto" | "tel") => u,
         Some("data") if data_img => u,
@@ -462,10 +578,22 @@ mod tests {
 
     #[test]
     fn markdown_strips_javascript_links() {
-        let md = |t: &str| environment().render_str("{{ t | markdown }}", minijinja::context! { t => t }).unwrap();
-        for bad in ["[x](javascript:alert(1))", "[x](JaVaScRiPt:alert(1))", "[x](<  javascript:alert(1)>)", "![x](data:text/html,a)"] {
+        let md = |t: &str| {
+            environment()
+                .render_str("{{ t | markdown }}", minijinja::context! { t => t })
+                .unwrap()
+        };
+        for bad in [
+            "[x](javascript:alert(1))",
+            "[x](JaVaScRiPt:alert(1))",
+            "[x](<  javascript:alert(1)>)",
+            "![x](data:text/html,a)",
+        ] {
             let o = md(bad);
-            assert!(!o.to_lowercase().contains("javascript:") && !o.contains("data:"), "{bad} -> {o}");
+            assert!(
+                !o.to_lowercase().contains("javascript:") && !o.contains("data:"),
+                "{bad} -> {o}"
+            );
         }
         assert!(md("[x](https://a.com)").contains(r#"href="https://a.com""#));
         assert!(md("[x](#top)").contains(r##"href="#top""##));
@@ -474,14 +602,24 @@ mod tests {
 
     #[test]
     fn safe_url_filter() {
-        let f = |u: &str| environment().render_str("{{ u | safe_url | safe }}", minijinja::context! { u => u }).unwrap();
+        let f = |u: &str| {
+            environment()
+                .render_str("{{ u | safe_url | safe }}", minijinja::context! { u => u })
+                .unwrap()
+        };
         assert_eq!(f("https://a.com/x"), "https://a.com/x");
         assert_eq!(f("mailto:a@b.c"), "mailto:a@b.c");
         assert_eq!(f("/rel"), "/rel");
         assert_eq!(f("JavaScript:alert(1)"), "#");
         assert_eq!(f(" java\nscript:alert(1)"), "#");
-        assert_eq!(f("data:image/png;base64,AAAA"), "data:image/png;base64,AAAA");
-        assert_eq!(f("data:image/svg+xml;base64,AAAA"), "data:image/svg+xml;base64,AAAA");
+        assert_eq!(
+            f("data:image/png;base64,AAAA"),
+            "data:image/png;base64,AAAA"
+        );
+        assert_eq!(
+            f("data:image/svg+xml;base64,AAAA"),
+            "data:image/svg+xml;base64,AAAA"
+        );
         assert_eq!(f("DATA:image/jpeg;base64,AA"), "DATA:image/jpeg;base64,AA");
         assert_eq!(f("data:text/html;base64,AAAA"), "#");
         assert_eq!(f("data:image/pngx;base64,AA"), "#");
@@ -497,7 +635,12 @@ mod tests {
 
     #[test]
     fn markdown_renders_bold_and_escapes_html() {
-        let out = environment().render_str("{{ t | markdown }}", minijinja::context! { t => "**a** <b>" }).unwrap();
+        let out = environment()
+            .render_str(
+                "{{ t | markdown }}",
+                minijinja::context! { t => "**a** <b>" },
+            )
+            .unwrap();
         assert!(out.contains("<strong>a</strong>"), "{out}");
         assert!(out.contains("&lt;b&gt;"), "{out}");
     }

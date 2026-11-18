@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use chromiumoxide::cdp::browser_protocol::emulation::{SetDeviceMetricsOverrideParams, SetScriptExecutionDisabledParams};
+use chromiumoxide::cdp::browser_protocol::emulation::{
+    SetDeviceMetricsOverrideParams, SetScriptExecutionDisabledParams,
+};
 use chromiumoxide::cdp::browser_protocol::page::{PrintToPdfParams, Viewport};
 use chromiumoxide::page::ScreenshotParams;
 use chromiumoxide::{Browser, BrowserConfig};
@@ -30,7 +32,9 @@ pub fn find_browser() -> Option<PathBuf> {
         return first_existing([PathBuf::from(p)]);
     }
     if cfg!(target_os = "macos") {
-        let app = |n: &str, bin: &str| PathBuf::from(format!("/Applications/{n}.app/Contents/MacOS/{bin}"));
+        let app = |n: &str, bin: &str| {
+            PathBuf::from(format!("/Applications/{n}.app/Contents/MacOS/{bin}"))
+        };
         first_existing([
             app("Google Chrome", "Google Chrome"),
             app("Microsoft Edge", "Microsoft Edge"),
@@ -38,12 +42,25 @@ pub fn find_browser() -> Option<PathBuf> {
             app("Brave Browser", "Brave Browser"),
         ])
     } else if cfg!(windows) {
-        let rels = [r"Google\Chrome\Application\chrome.exe", r"Microsoft\Edge\Application\msedge.exe"];
-        first_existing(["ProgramFiles", "ProgramFiles(x86)", "LocalAppData"].iter().filter_map(|v| std::env::var_os(v)).flat_map(|base| {
-            rels.iter().map(move |r| PathBuf::from(&base).join(r))
-        }))
+        let rels = [
+            r"Google\Chrome\Application\chrome.exe",
+            r"Microsoft\Edge\Application\msedge.exe",
+        ];
+        first_existing(
+            ["ProgramFiles", "ProgramFiles(x86)", "LocalAppData"]
+                .iter()
+                .filter_map(|v| std::env::var_os(v))
+                .flat_map(|base| rels.iter().map(move |r| PathBuf::from(&base).join(r))),
+        )
     } else {
-        ["google-chrome", "chromium", "chromium-browser", "microsoft-edge"].iter().find_map(|b| {
+        [
+            "google-chrome",
+            "chromium",
+            "chromium-browser",
+            "microsoft-edge",
+        ]
+        .iter()
+        .find_map(|b| {
             let out = std::process::Command::new("which").arg(b).output().ok()?;
             let p = PathBuf::from(String::from_utf8(out.stdout).ok()?.trim());
             (out.status.success() && p.is_file()).then_some(p)
@@ -61,14 +78,19 @@ where
     F: FnOnce(chromiumoxide::Page) -> Fut,
     Fut: std::future::Future<Output = Result<T, CoreError>>,
 {
-    let exe = find_browser().ok_or_else(|| CoreError::Browser("No Chrome, Edge or Chromium found".into()))?;
+    let exe = find_browser()
+        .ok_or_else(|| CoreError::Browser("No Chrome, Edge or Chromium found".into()))?;
     // Fresh profile so a running Chrome's profile is never touched.
     let profile = tempfile::tempdir()?;
     let config = BrowserConfig::builder()
         .chrome_executable(exe)
         .user_data_dir(profile.path())
         .new_headless_mode()
-        .args(["--disable-gpu", "--no-first-run", "--no-default-browser-check"])
+        .args([
+            "--disable-gpu",
+            "--no-first-run",
+            "--no-default-browser-check",
+        ])
         .build()
         .map_err(CoreError::Browser)?;
     let (mut browser, mut handler) = Browser::launch(config).await.map_err(browser_err)?;
@@ -77,13 +99,17 @@ where
     let run = async {
         let page = browser.new_page("about:blank").await.map_err(browser_err)?;
         // Themes are untrusted: no page scripts. set_content itself runs over CDP, which still works.
-        page.execute(SetScriptExecutionDisabledParams::new(true)).await.map_err(browser_err)?;
+        page.execute(SetScriptExecutionDisabledParams::new(true))
+            .await
+            .map_err(browser_err)?;
         page.set_content(html).await.map_err(browser_err)?;
         f(page).await
     };
     let res = match tokio::time::timeout(Duration::from_secs(30), run).await {
         Ok(r) => r,
-        Err(_) => Err(CoreError::Browser("Timed out waiting for the browser".into())),
+        Err(_) => Err(CoreError::Browser(
+            "Timed out waiting for the browser".into(),
+        )),
     };
 
     // A wedged Chrome never answers close, so bound it and then kill.
@@ -112,7 +138,10 @@ pub async fn html_to_pdf(html: &str, out: &Path, size: PageSize) -> Result<(), C
         .paper_height(h)
         .print_background(true)
         .build();
-    let bytes = with_page(html, |page| async move { page.pdf(params).await.map_err(browser_err) }).await?;
+    let bytes = with_page(html, |page| async move {
+        page.pdf(params).await.map_err(browser_err)
+    })
+    .await?;
     tokio::fs::write(out, bytes).await?;
     Ok(())
 }
@@ -123,16 +152,31 @@ pub async fn html_to_png(html: &str, size: PageSize) -> Result<Vec<u8>, CoreErro
         PageSize::Letter => (816, 1056),
     };
     with_page(html, |page| async move {
-        page.execute(SetDeviceMetricsOverrideParams::new(w, h, 2.0, false)).await.map_err(browser_err)?;
+        page.execute(SetDeviceMetricsOverrideParams::new(w, h, 2.0, false))
+            .await
+            .map_err(browser_err)?;
         // Clip to the first page; the default full-viewport capture would otherwise be the same, but this is explicit.
-        let clip = Viewport { x: 0.0, y: 0.0, width: w as f64, height: h as f64, scale: 1.0 };
-        page.screenshot(ScreenshotParams::builder().clip(clip).build()).await.map_err(browser_err)
+        let clip = Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: w as f64,
+            height: h as f64,
+            scale: 1.0,
+        };
+        page.screenshot(ScreenshotParams::builder().clip(clip).build())
+            .await
+            .map_err(browser_err)
     })
     .await
 }
 
 impl Library {
-    pub async fn export(&self, name: &str, format: ExportFormat, theme: Option<&str>) -> Result<PathBuf, CoreError> {
+    pub async fn export(
+        &self,
+        name: &str,
+        format: ExportFormat,
+        theme: Option<&str>,
+    ) -> Result<PathBuf, CoreError> {
         let cv_path = self.cv_path(name)?;
         let dir = self.root().join("exports");
         std::fs::create_dir_all(&dir)?;
@@ -148,8 +192,15 @@ impl Library {
         }
         let id = self.effective_theme(name, theme)?;
         let html = self.render_cv(name, Some(&id), None)?;
-        let ext = if format == ExportFormat::Pdf { "pdf" } else { "html" };
-        let out = dir.join(format!("{flat}-{}.{ext}", id.strip_prefix("builtin:").unwrap_or(&id)));
+        let ext = if format == ExportFormat::Pdf {
+            "pdf"
+        } else {
+            "html"
+        };
+        let out = dir.join(format!(
+            "{flat}-{}.{ext}",
+            id.strip_prefix("builtin:").unwrap_or(&id)
+        ));
         if format == ExportFormat::Pdf {
             html_to_pdf(&html, &out, self.get_theme(&id)?.info.meta.page.size).await?;
         } else {

@@ -33,7 +33,12 @@ pub fn with_lock<T>(root: &Path, f: impl FnOnce() -> Result<T, CoreError>) -> Re
 /// Commit only `paths` (removal if gone) on top of HEAD; other staged files are untouched.
 /// Returns "" when nothing changed. Public so integration tests can reach it.
 #[doc(hidden)]
-pub fn commit(root: &Path, paths: &[&Path], author: Author, message: &str) -> Result<String, CoreError> {
+pub fn commit(
+    root: &Path,
+    paths: &[&Path],
+    author: Author,
+    message: &str,
+) -> Result<String, CoreError> {
     let repo = git2::Repository::open(root)?;
     let parent = match repo.head() {
         Ok(h) => Some(h.peel_to_commit()?),
@@ -83,7 +88,9 @@ pub fn commit(root: &Path, paths: &[&Path], author: Author, message: &str) -> Re
     let sig = git2::Signature::now(author.name(), "jsoncv@localhost")?;
     let tree = repo.find_tree(tree_id)?;
     let parents: Vec<&git2::Commit> = parent.iter().collect();
-    Ok(repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)?.to_string())
+    Ok(repo
+        .commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)?
+        .to_string())
 }
 
 /// True when the file parses as JSON and passes the schema.
@@ -122,7 +129,11 @@ fn canonical(v: &Value) -> Value {
         Value::Object(m) => {
             let mut keys: Vec<_> = m.keys().collect();
             keys.sort();
-            Value::Object(keys.into_iter().map(|k| (k.clone(), canonical(&m[k]))).collect())
+            Value::Object(
+                keys.into_iter()
+                    .map(|k| (k.clone(), canonical(&m[k])))
+                    .collect(),
+            )
         }
         Value::Array(a) => Value::Array(a.iter().map(canonical).collect()),
         _ => v.clone(),
@@ -167,8 +178,15 @@ impl Library {
         let rel = format!("{name}.cv.json");
         self.cv_path(name)?;
         let repo = git2::Repository::open(self.root())?;
-        let Ok(head) = repo.head() else { return Ok(vec![]) };
-        let blob = |c: &git2::Commit| c.tree().ok().and_then(|t| t.get_path(Path::new(&rel)).ok()).map(|e| e.id());
+        let Ok(head) = repo.head() else {
+            return Ok(vec![]);
+        };
+        let blob = |c: &git2::Commit| {
+            c.tree()
+                .ok()
+                .and_then(|t| t.get_path(Path::new(&rel)).ok())
+                .map(|e| e.id())
+        };
         let mut walk = repo.revwalk()?;
         walk.push(head.peel_to_commit()?.id())?;
         let mut out = vec![];
@@ -205,9 +223,14 @@ impl Library {
     pub fn diff(&self, name: &str, commit: &str) -> Result<String, CoreError> {
         let old = pretty(&self.read_cv_at(name, commit)?)?;
         let new = pretty(&self.read_cv(name)?.cv)?;
-        let id = resolve(&git2::Repository::open(self.root())?, commit)?.id().to_string();
+        let id = resolve(&git2::Repository::open(self.root())?, commit)?
+            .id()
+            .to_string();
         let short = &id[..7];
-        let d = similar::TextDiff::from_lines(&old, &new).unified_diff().header(short, "current").to_string();
+        let d = similar::TextDiff::from_lines(&old, &new)
+            .unified_diff()
+            .header(short, "current")
+            .to_string();
         Ok(d)
     }
 }

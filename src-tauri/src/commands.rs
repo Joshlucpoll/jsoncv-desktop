@@ -44,7 +44,11 @@ impl From<CoreError> for ApiError {
             CoreError::Invalid(v) => Some(v),
             _ => None,
         };
-        ApiError { kind: kind.into(), message, errors }
+        ApiError {
+            kind: kind.into(),
+            message,
+            errors,
+        }
     }
 }
 
@@ -65,8 +69,12 @@ type Res<T> = Result<T, ApiError>;
 
 /// Runs blocking file/Git work off the main thread. Sync Tauri commands run inline on the
 /// main thread, and core's `with_lock` can sleep-retry for up to 2 s.
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, ApiError> + Send + 'static) -> Res<T> {
-    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| std::io::Error::other(e.to_string()))?
+async fn blocking<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, ApiError> + Send + 'static,
+) -> Res<T> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| std::io::Error::other(e.to_string()))?
 }
 
 /// `blocking` with a clone of the current library.
@@ -95,13 +103,25 @@ pub async fn read_cv(state: State<'_, AppState>, name: String) -> Res<Value> {
 }
 
 #[tauri::command]
-pub async fn save_draft(state: State<'_, AppState>, name: String, base_cv: Value, draft: Value) -> Res<Saved> {
+pub async fn save_draft(
+    state: State<'_, AppState>,
+    name: String,
+    base_cv: Value,
+    draft: Value,
+) -> Res<Saved> {
     with_lib(&state, move |l| l.save_draft(&name, &base_cv, &draft)).await
 }
 
 #[tauri::command]
-pub async fn create_tailored(state: State<'_, AppState>, slug: String, from: String) -> Res<CvInfo> {
-    with_lib(&state, move |l| l.create_tailored(&slug, &from, Author::You)).await
+pub async fn create_tailored(
+    state: State<'_, AppState>,
+    slug: String,
+    from: String,
+) -> Res<CvInfo> {
+    with_lib(&state, move |l| {
+        l.create_tailored(&slug, &from, Author::You)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -140,19 +160,37 @@ pub async fn theme_report(state: State<'_, AppState>, id: String) -> Res<ThemeRe
 }
 
 #[tauri::command]
-pub async fn duplicate_theme(state: State<'_, AppState>, id: String, new_id: String) -> Res<ThemeInfo> {
-    with_lib(&state, move |l| l.duplicate_theme(&id, &new_id, Author::You)).await
+pub async fn duplicate_theme(
+    state: State<'_, AppState>,
+    id: String,
+    new_id: String,
+) -> Res<ThemeInfo> {
+    with_lib(&state, move |l| {
+        l.duplicate_theme(&id, &new_id, Author::You)
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn set_cv_theme(state: State<'_, AppState>, name: String, theme_id: String) -> Res<Saved> {
-    with_lib(&state, move |l| l.set_cv_theme(&name, &theme_id, Author::You)).await
+pub async fn set_cv_theme(
+    state: State<'_, AppState>,
+    name: String,
+    theme_id: String,
+) -> Res<Saved> {
+    with_lib(&state, move |l| {
+        l.set_cv_theme(&name, &theme_id, Author::You)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn export(state: State<'_, AppState>, name: String, format: ExportFormat) -> Res<String> {
     let lib = state.lib();
-    Ok(lib.export(&name, format, None).await?.to_string_lossy().into_owned())
+    Ok(lib
+        .export(&name, format, None)
+        .await?
+        .to_string_lossy()
+        .into_owned())
 }
 
 /// Opens a window on the preview URL and prints it once loaded. Async: window creation in a
@@ -162,8 +200,10 @@ pub async fn print_cv(app: AppHandle, state: State<'_, AppState>, name: String) 
     // Render first so a broken CV or theme reaches the caller instead of printing the error page.
     let n = name.clone();
     with_lib(&state, move |l| l.render_cv(&n, None, None)).await?;
-    let label: String =
-        format!("print-{name}").chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let label: String = format!("print-{name}")
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
     let url = preview_url(&name);
     if let Some(w) = app.get_webview_window(&label) {
         // Reloading fires the window's page-load handler, which prints again.
@@ -191,7 +231,10 @@ pub async fn add_asset_from_path(state: State<'_, AppState>, path: PathBuf) -> R
         if std::fs::metadata(&path)?.len() > MAX_ASSET_BYTES as u64 {
             return Err(CoreError::BadPath("Asset too large (max 20 MB)".into()).into());
         }
-        let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let file_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let bytes = std::fs::read(&path)?;
         Ok(lib.add_asset(&file_name, &bytes, Author::You)?)
     })
@@ -221,9 +264,17 @@ pub fn get_config(state: State<AppState>) -> LibraryConfig {
 }
 
 #[tauri::command]
-pub async fn set_library(app: AppHandle, state: State<'_, AppState>, path: PathBuf) -> Res<LibraryConfig> {
+pub async fn set_library(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: PathBuf,
+) -> Res<LibraryConfig> {
     if !path.is_absolute() {
-        return Err(CoreError::BadPath(format!("Library path must be absolute: {}", path.display())).into());
+        return Err(CoreError::BadPath(format!(
+            "Library path must be absolute: {}",
+            path.display()
+        ))
+        .into());
     }
     let lib = blocking(move || {
         let lib = Library::open(&path)?;
@@ -242,7 +293,8 @@ pub async fn set_library(app: AppHandle, state: State<'_, AppState>, path: PathB
 #[tauri::command]
 pub async fn reveal(path: PathBuf) -> Res<()> {
     blocking(move || {
-        tauri_plugin_opener::reveal_item_in_dir(Path::new(&path)).map_err(|e| std::io::Error::other(e.to_string()).into())
+        tauri_plugin_opener::reveal_item_in_dir(Path::new(&path))
+            .map_err(|e| std::io::Error::other(e.to_string()).into())
     })
     .await
 }
@@ -250,7 +302,10 @@ pub async fn reveal(path: PathBuf) -> Res<()> {
 /// The folder of a library theme, built natively so the UI never joins paths itself.
 #[tauri::command]
 pub async fn theme_dir_path(state: State<'_, AppState>, id: String) -> Res<String> {
-    with_lib(&state, move |l| Ok(l.theme_dir(&id)?.to_string_lossy().into_owned())).await
+    with_lib(&state, move |l| {
+        Ok(l.theme_dir(&id)?.to_string_lossy().into_owned())
+    })
+    .await
 }
 
 /// Called by the UI once its unsaved-draft guard allows quitting.
@@ -285,15 +340,27 @@ mod tests {
         assert_eq!(kind(CoreError::Locked), "Locked");
         assert_eq!(kind(CoreError::ReadOnly(s())), "ReadOnly");
         assert_eq!(kind(CoreError::Browser(s())), "Browser");
-        assert_eq!(kind(CoreError::Render(RenderError { message: s(), line: Some(2) })), "Render");
+        assert_eq!(
+            kind(CoreError::Render(RenderError {
+                message: s(),
+                line: Some(2)
+            })),
+            "Render"
+        );
         assert_eq!(kind(CoreError::Io(std::io::Error::other("x"))), "Io");
-        assert_eq!(kind(serde_json::from_str::<Value>("{").unwrap_err().into()), "Json");
+        assert_eq!(
+            kind(serde_json::from_str::<Value>("{").unwrap_err().into()),
+            "Json"
+        );
         assert_eq!(kind(git2::Error::from_str("x").into()), "Git");
     }
 
     #[test]
     fn invalid_carries_schema_errors() {
-        let e = ApiError::from(CoreError::Invalid(vec![SchemaError { path: "/basics".into(), message: "bad".into() }]));
+        let e = ApiError::from(CoreError::Invalid(vec![SchemaError {
+            path: "/basics".into(),
+            message: "bad".into(),
+        }]));
         let v = serde_json::to_value(&e).unwrap();
         assert_eq!(v["errors"][0]["path"], "/basics");
         let v = serde_json::to_value(ApiError::from(CoreError::Stale)).unwrap();

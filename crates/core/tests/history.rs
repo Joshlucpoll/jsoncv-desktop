@@ -11,15 +11,32 @@ fn head(d: &Path) -> (String, String, String) {
     let r = git2::Repository::open(d).unwrap();
     let c = r.head().unwrap().peel_to_commit().unwrap();
     let a = c.author();
-    (a.name().unwrap().into(), a.email().unwrap().into(), c.message().unwrap().into())
+    (
+        a.name().unwrap().into(),
+        a.email().unwrap().into(),
+        c.message().unwrap().into(),
+    )
 }
 
 #[test]
 fn open_makes_initial_commit() {
     let d = TempDir::new().unwrap();
     Library::open(d.path()).unwrap();
-    assert_eq!(head(d.path()), ("You".into(), "jsoncv@localhost".into(), "Create library".into()));
-    let n = git2::Repository::open(d.path()).unwrap().head().unwrap().peel_to_commit().unwrap().parent_count();
+    assert_eq!(
+        head(d.path()),
+        (
+            "You".into(),
+            "jsoncv@localhost".into(),
+            "Create library".into()
+        )
+    );
+    let n = git2::Repository::open(d.path())
+        .unwrap()
+        .head()
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .parent_count();
     assert_eq!(n, 0);
 }
 
@@ -29,7 +46,9 @@ fn commit_noop_when_unchanged() {
     Library::open(d.path()).unwrap();
     std::fs::write(d.path().join("main.cv.json"), cv("Ada")).unwrap();
     let p = Path::new("main.cv.json");
-    assert!(!commit(d.path(), &[p], Author::You, "edit").unwrap().is_empty());
+    assert!(!commit(d.path(), &[p], Author::You, "edit")
+        .unwrap()
+        .is_empty());
     assert_eq!(commit(d.path(), &[p], Author::You, "edit").unwrap(), "");
 }
 
@@ -65,14 +84,32 @@ fn history_filters_by_file() {
     let d = TempDir::new().unwrap();
     let lib = Library::open(d.path()).unwrap();
     std::fs::write(d.path().join("tailored/a.cv.json"), cv("A")).unwrap();
-    commit(d.path(), &[Path::new("tailored/a.cv.json")], Author::Agent, "make a").unwrap();
+    commit(
+        d.path(),
+        &[Path::new("tailored/a.cv.json")],
+        Author::Agent,
+        "make a",
+    )
+    .unwrap();
     std::fs::write(d.path().join("main.cv.json"), cv("Ada")).unwrap();
-    commit(d.path(), &[Path::new("main.cv.json")], Author::You, "edit main").unwrap();
+    commit(
+        d.path(),
+        &[Path::new("main.cv.json")],
+        Author::You,
+        "edit main",
+    )
+    .unwrap();
     let h = lib.history("tailored/a", 10).unwrap();
     assert_eq!(h.len(), 1);
-    assert_eq!((h[0].author.as_str(), h[0].message.as_str()), ("Agent", "make a"));
+    assert_eq!(
+        (h[0].author.as_str(), h[0].message.as_str()),
+        ("Agent", "make a")
+    );
     let m = lib.history("main", 10).unwrap();
-    assert_eq!(m.iter().map(|v| v.message.as_str()).collect::<Vec<_>>(), ["edit main", "Create library"]);
+    assert_eq!(
+        m.iter().map(|v| v.message.as_str()).collect::<Vec<_>>(),
+        ["edit main", "Create library"]
+    );
     assert_eq!(lib.history("main", 1).unwrap().len(), 1);
 }
 
@@ -87,9 +124,15 @@ fn diff_shows_changed_field() {
     let diff = lib.diff("main", &old).unwrap();
     assert!(diff.contains("-    \"name\": \"Ada\""), "{diff}");
     assert!(diff.contains("+    \"name\": \"Grace\""), "{diff}");
-    assert_eq!(lib.read_cv_at("main", &old).unwrap()["basics"]["name"], "Ada");
+    assert_eq!(
+        lib.read_cv_at("main", &old).unwrap()["basics"]["name"],
+        "Ada"
+    );
     let first = lib.history("main", 10).unwrap().pop().unwrap().commit;
-    assert!(matches!(lib.read_cv_at("tailored/zz", &first), Err(CoreError::NotFound(_))));
+    assert!(matches!(
+        lib.read_cv_at("tailored/zz", &first),
+        Err(CoreError::NotFound(_))
+    ));
 }
 
 #[test]
@@ -129,7 +172,10 @@ fn commit_ignores_unrelated_staged_files() {
     assert!(tree.get_path(Path::new("notes.txt")).is_err());
     assert!(tree.get_path(Path::new("main.cv.json")).is_ok());
     // still staged, and main is clean
-    assert!(r.status_file(Path::new("notes.txt")).unwrap().contains(git2::Status::INDEX_NEW));
+    assert!(r
+        .status_file(Path::new("notes.txt"))
+        .unwrap()
+        .contains(git2::Status::INDEX_NEW));
     assert!(r.status_file(Path::new("main.cv.json")).unwrap().is_empty());
 }
 
@@ -151,6 +197,9 @@ fn unknown_commit_is_not_found() {
     let d = TempDir::new().unwrap();
     let lib = Library::open(d.path()).unwrap();
     let bad = "0123456789abcdef0123456789abcdef01234567";
-    assert!(matches!(lib.read_cv_at("main", bad), Err(CoreError::NotFound(_))));
+    assert!(matches!(
+        lib.read_cv_at("main", bad),
+        Err(CoreError::NotFound(_))
+    ));
     assert!(matches!(lib.diff("main", bad), Err(CoreError::NotFound(_))));
 }

@@ -44,12 +44,21 @@ impl AppState {
 }
 
 /// Opens `configured`; if that fails, opens `default` and records why. Fails only if `default` fails too.
-pub fn open_with_fallback(configured: &Path, default: &Path) -> Result<(Library, Option<Fallback>), CoreError> {
+pub fn open_with_fallback(
+    configured: &Path,
+    default: &Path,
+) -> Result<(Library, Option<Fallback>), CoreError> {
     match Library::open_configured(configured, default) {
         Ok(lib) => Ok((lib, None)),
         Err(e) if configured != default => {
             let lib = Library::open(default)?;
-            Ok((lib, Some(Fallback { path: configured.to_string_lossy().into_owned(), message: e.to_string() })))
+            Ok((
+                lib,
+                Some(Fallback {
+                    path: configured.to_string_lossy().into_owned(),
+                    message: e.to_string(),
+                }),
+            ))
         }
         Err(e) => Err(e),
     }
@@ -69,7 +78,13 @@ fn guarded_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>>
             app_menu.remove(quit)?;
         }
         let label = format!("Quit {}", app.package_info().name);
-        app_menu.append(&MenuItem::with_id(app, "quit", label, true, Some("CmdOrCtrl+Q"))?)?;
+        app_menu.append(&MenuItem::with_id(
+            app,
+            "quit",
+            label,
+            true,
+            Some("CmdOrCtrl+Q"),
+        )?)?;
     }
     Ok(menu)
 }
@@ -86,9 +101,14 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let (lib, fallback) = open_with_fallback(&config::load().library, &config::default_library())?;
+            let (lib, fallback) =
+                open_with_fallback(&config::load().library, &config::default_library())?;
             let watcher = start_watcher(app.handle().clone(), lib.clone());
-            app.manage(AppState { lib: Mutex::new(lib), fallback: Mutex::new(fallback), watcher: Mutex::new(watcher) });
+            app.manage(AppState {
+                lib: Mutex::new(lib),
+                fallback: Mutex::new(fallback),
+                watcher: Mutex::new(watcher),
+            });
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol(PREVIEW_SCHEME, |ctx, req, responder| {
@@ -157,7 +177,9 @@ fn render_preview(lib: &Library, uri: &str) -> String {
             }
         }
     }
-    let Some(cv) = cv else { return error_page("Missing cv parameter", None) };
+    let Some(cv) = cv else {
+        return error_page("Missing cv parameter", None);
+    };
     let theme = theme.as_deref().filter(|s| !s.is_empty());
     let commit = commit.as_deref().filter(|s| !s.is_empty());
     // Spec §5.3: a file broken outside the app shows its last committed (valid) version plus a notice.
@@ -168,14 +190,18 @@ fn render_preview(lib: &Library, uri: &str) -> String {
             Err(_) => false,
         };
     let res = if broken {
-        lib.render_cv(&cv, theme, Some("HEAD")).map(|html| with_notice(&html))
+        lib.render_cv(&cv, theme, Some("HEAD"))
+            .map(|html| with_notice(&html))
     } else {
         lib.render_cv(&cv, theme, commit)
     };
     match res {
         Ok(html) => html,
         Err(CoreError::Render(e)) => error_page(&e.message, e.line),
-        Err(e) if broken => error_page(&format!("This file has an error and no saved version: {e}"), None),
+        Err(e) if broken => error_page(
+            &format!("This file has an error and no saved version: {e}"),
+            None,
+        ),
         Err(e) => error_page(&e.to_string(), None),
     }
 }
@@ -190,11 +216,16 @@ fn with_notice(html: &str) -> String {
 }
 
 fn escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn error_page(message: &str, line: Option<usize>) -> String {
-    let line = line.map(|l| format!("<p>Template line {l}</p>")).unwrap_or_default();
+    let line = line
+        .map(|l| format!("<p>Template line {l}</p>"))
+        .unwrap_or_default();
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><style>body{{font:14px system-ui,sans-serif;padding:2em;color:#a00}}pre{{white-space:pre-wrap}}</style></head><body><h1>Cannot render this CV</h1><pre>{}</pre>{line}</body></html>",
         escape(message)
@@ -301,7 +332,10 @@ mod tests {
         let roots = [PathBuf::from("/lib")];
         let r = |p: &str| relevant(&roots, Path::new(p));
         assert_eq!(r("/lib/main.cv.json").as_deref(), Some("main.cv.json"));
-        assert_eq!(r("/lib/tailored/a.cv.json").as_deref(), Some("tailored/a.cv.json"));
+        assert_eq!(
+            r("/lib/tailored/a.cv.json").as_deref(),
+            Some("tailored/a.cv.json")
+        );
         assert_eq!(r("/lib/.git/index"), None);
         assert_eq!(r("/lib/exports/main.pdf"), None);
         assert_eq!(r("/lib/.main.cv.json.tmp-123"), None);
@@ -315,8 +349,14 @@ mod tests {
         let lib = Library::open(dir.path()).unwrap();
         let ok = render_preview(&lib, preview_url("main").as_str());
         assert!(!ok.contains("Cannot render"), "{ok}");
-        let bad = render_preview(&lib, "http://jsoncv-preview.localhost/render?cv=tailored%2Fnope");
-        assert!(bad.contains("Cannot render") && bad.contains("tailored/nope"), "{bad}");
+        let bad = render_preview(
+            &lib,
+            "http://jsoncv-preview.localhost/render?cv=tailored%2Fnope",
+        );
+        assert!(
+            bad.contains("Cannot render") && bad.contains("tailored/nope"),
+            "{bad}"
+        );
         assert!(render_preview(&lib, "jsoncv-preview://localhost/render").contains("Missing cv"));
     }
 
@@ -327,10 +367,20 @@ mod tests {
         let url = preview_url("main");
         std::fs::write(dir.path().join("main.cv.json"), "{").unwrap();
         let page = render_preview(&lib, url.as_str());
-        assert!(page.contains("Mara Lindqvist") && page.contains("showing the last saved version"), "{page}");
-        std::fs::write(dir.path().join("main.cv.json"), r#"{"basics":{"name":"Broken"},"work":[{"startDate":"March"}]}"#).unwrap();
+        assert!(
+            page.contains("Mara Lindqvist") && page.contains("showing the last saved version"),
+            "{page}"
+        );
+        std::fs::write(
+            dir.path().join("main.cv.json"),
+            r#"{"basics":{"name":"Broken"},"work":[{"startDate":"March"}]}"#,
+        )
+        .unwrap();
         let page = render_preview(&lib, url.as_str());
-        assert!(page.contains("Mara Lindqvist") && !page.contains("Broken"), "{page}");
+        assert!(
+            page.contains("Mara Lindqvist") && !page.contains("Broken"),
+            "{page}"
+        );
         assert!(page.contains("showing the last saved version"));
     }
 

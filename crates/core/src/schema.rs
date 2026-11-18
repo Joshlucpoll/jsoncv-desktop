@@ -12,14 +12,22 @@ pub struct SchemaError {
 }
 
 static VALIDATOR: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
-    let schema: serde_json::Value = serde_json::from_str(SCHEMA).expect("bundled schema is valid JSON");
+    let schema: serde_json::Value =
+        serde_json::from_str(SCHEMA).expect("bundled schema is valid JSON");
     jsonschema::validator_for(&schema).expect("bundled schema compiles")
 });
 
 pub fn validate(cv: &serde_json::Value) -> Result<(), Vec<SchemaError>> {
     let errs: Vec<SchemaError> = VALIDATOR
         .iter_errors(cv)
-        .map(|e| SchemaError { path: e.instance_path().to_string(), message: e.to_string() })
+        .map(|e| SchemaError {
+            path: e.instance_path().to_string(),
+            message: e.to_string(),
+        })
         .collect();
-    if errs.is_empty() { Ok(()) } else { Err(errs) }
+    if errs.is_empty() {
+        Ok(())
+    } else {
+        Err(errs)
+    }
 }

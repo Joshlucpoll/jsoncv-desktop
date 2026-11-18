@@ -36,8 +36,14 @@ fn invalid_patch_result_not_written() {
     let (d, lib) = setup();
     let before = std::fs::read(d.path().join("main.cv.json")).unwrap();
     let p = patch(json!([{"op":"replace","path":"/work/0/startDate","value":"March"}]));
-    assert!(matches!(lib.patch_cv("main", &p, Author::Agent, None), Err(CoreError::Invalid(_))));
-    assert_eq!(std::fs::read(d.path().join("main.cv.json")).unwrap(), before);
+    assert!(matches!(
+        lib.patch_cv("main", &p, Author::Agent, None),
+        Err(CoreError::Invalid(_))
+    ));
+    assert_eq!(
+        std::fs::read(d.path().join("main.cv.json")).unwrap(),
+        before
+    );
 }
 
 #[test]
@@ -74,9 +80,21 @@ fn draft_detects_shifted_array() {
     lib.patch_cv("main", &p, Author::Agent, None).unwrap();
     let mut draft = base.clone();
     draft["work"][1]["position"] = json!("Changed");
-    assert!(matches!(lib.save_draft("main", &base, &draft), Err(CoreError::PatchFailed(_))));
-    assert_eq!(lib.read_cv("main").unwrap().cv["work"][0]["name"], "Inserted");
-    assert_eq!(lib.read_cv("main").unwrap().cv["work"].as_array().unwrap().len(), 3);
+    assert!(matches!(
+        lib.save_draft("main", &base, &draft),
+        Err(CoreError::PatchFailed(_))
+    ));
+    assert_eq!(
+        lib.read_cv("main").unwrap().cv["work"][0]["name"],
+        "Inserted"
+    );
+    assert_eq!(
+        lib.read_cv("main").unwrap().cv["work"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
 }
 
 #[test]
@@ -87,8 +105,13 @@ fn tailored_copy_records_origin() {
     let doc = lib.read_cv("tailored/stripe").unwrap();
     assert_eq!(doc.cv["meta"]["tailoredFrom"]["cv"], "main");
     assert!(d.path().join("tailored/stripe.cv.json").exists());
-    assert!(matches!(lib.create_tailored("stripe", "main", Author::You), Err(CoreError::BadName(_))));
-    assert!(lib.create_tailored("Bad Slug", "main", Author::You).is_err());
+    assert!(matches!(
+        lib.create_tailored("stripe", "main", Author::You),
+        Err(CoreError::BadName(_))
+    ));
+    assert!(lib
+        .create_tailored("Bad Slug", "main", Author::You)
+        .is_err());
 }
 
 #[test]
@@ -98,20 +121,43 @@ fn rename_and_delete_tailored() {
     let info = lib.rename_cv("tailored/a", "b", Author::You).unwrap();
     assert_eq!(info.name, "tailored/b");
     assert!(!d.path().join("tailored/a.cv.json").exists());
-    assert_eq!(lib.history("tailored/b", 5).unwrap()[0].message, "Renamed tailored/a to tailored/b");
+    assert_eq!(
+        lib.history("tailored/b", 5).unwrap()[0].message,
+        "Renamed tailored/a to tailored/b"
+    );
     lib.delete_cv("tailored/b", Author::You).unwrap();
     assert!(!d.path().join("tailored/b.cv.json").exists());
     let r = git2::Repository::open(d.path()).unwrap();
-    assert_eq!(r.head().unwrap().peel_to_commit().unwrap().message().unwrap(), "Deleted tailored/b");
-    let st: Vec<_> = r.statuses(None).unwrap().iter().filter(|e| !e.status().is_ignored()).map(|e| e.path().unwrap().to_string()).collect();
+    assert_eq!(
+        r.head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .message()
+            .unwrap(),
+        "Deleted tailored/b"
+    );
+    let st: Vec<_> = r
+        .statuses(None)
+        .unwrap()
+        .iter()
+        .filter(|e| !e.status().is_ignored())
+        .map(|e| e.path().unwrap().to_string())
+        .collect();
     assert!(st.is_empty(), "{st:?}");
 }
 
 #[test]
 fn cannot_delete_or_rename_main() {
     let (_d, lib) = setup();
-    assert!(matches!(lib.delete_cv("main", Author::You), Err(CoreError::ReadOnly(_))));
-    assert!(matches!(lib.rename_cv("main", "x", Author::You), Err(CoreError::ReadOnly(_))));
+    assert!(matches!(
+        lib.delete_cv("main", Author::You),
+        Err(CoreError::ReadOnly(_))
+    ));
+    assert!(matches!(
+        lib.rename_cv("main", "x", Author::You),
+        Err(CoreError::ReadOnly(_))
+    ));
 }
 
 #[test]
@@ -121,7 +167,11 @@ fn set_theme() {
     std::fs::create_dir_all(&t).unwrap();
     std::fs::write(t.join("template.html.j2"), "x").unwrap();
     std::fs::write(t.join("style.css"), "").unwrap();
-    std::fs::write(t.join("theme.json"), r#"{"name":"T","description":"d","page":{"size":"A4"}}"#).unwrap();
+    std::fs::write(
+        t.join("theme.json"),
+        r#"{"name":"T","description":"d","page":{"size":"A4"}}"#,
+    )
+    .unwrap();
     lib.set_cv_theme("main", "t1", Author::You).unwrap();
     assert_eq!(lib.read_cv("main").unwrap().cv["meta"]["theme"], "t1");
 }
@@ -131,11 +181,23 @@ fn write_to_broken_file_refused() {
     let (d, lib) = setup();
     std::fs::write(d.path().join("main.cv.json"), "{").unwrap();
     let p = patch(json!([{"op":"replace","path":"/basics/name","value":"G"}]));
-    assert!(matches!(lib.patch_cv("main", &p, Author::Agent, None), Err(CoreError::Json(_))));
+    assert!(matches!(
+        lib.patch_cv("main", &p, Author::Agent, None),
+        Err(CoreError::Json(_))
+    ));
     let cv = json!({"basics":{"name":"x"}});
-    assert!(matches!(lib.save_draft("main", &cv, &json!({"basics":{"name":"y"}})), Err(CoreError::Json(_))));
-    assert!(matches!(lib.set_cv_theme("main", "builtin:x", Author::You), Err(CoreError::Json(_))));
-    assert_eq!(std::fs::read_to_string(d.path().join("main.cv.json")).unwrap(), "{");
+    assert!(matches!(
+        lib.save_draft("main", &cv, &json!({"basics":{"name":"y"}})),
+        Err(CoreError::Json(_))
+    ));
+    assert!(matches!(
+        lib.set_cv_theme("main", "builtin:x", Author::You),
+        Err(CoreError::Json(_))
+    ));
+    assert_eq!(
+        std::fs::read_to_string(d.path().join("main.cv.json")).unwrap(),
+        "{"
+    );
 }
 
 #[test]
@@ -161,8 +223,14 @@ fn draft_tail_removal_detects_concurrent_edit() {
     lib.patch_cv("main", &p, Author::Agent, None).unwrap();
     let mut draft = base.clone();
     draft["work"] = json!([]);
-    assert!(matches!(lib.save_draft("main", &base, &draft), Err(CoreError::PatchFailed(_))));
-    assert_eq!(lib.read_cv("main").unwrap().cv["work"][1]["position"], "AgentEdit");
+    assert!(matches!(
+        lib.save_draft("main", &base, &draft),
+        Err(CoreError::PatchFailed(_))
+    ));
+    assert_eq!(
+        lib.read_cv("main").unwrap().cv["work"][1]["position"],
+        "AgentEdit"
+    );
 }
 
 #[test]
@@ -179,11 +247,19 @@ fn draft_add_after_array_shift_detects_conflict() {
     assert!(base["work"][1].get("url").is_none());
     let mut draft = base.clone();
     draft["work"][1]["url"] = json!("https://user.example");
-    let p = patch(json!([{"op":"add","path":"/work/0","value":{"name":"NewCo","position":"CTO","startDate":"2025-01"}}]));
+    let p = patch(
+        json!([{"op":"add","path":"/work/0","value":{"name":"NewCo","position":"CTO","startDate":"2025-01"}}]),
+    );
     lib.patch_cv("main", &p, Author::Agent, None).unwrap();
     let before = std::fs::read(d.path().join("main.cv.json")).unwrap();
-    assert!(matches!(lib.save_draft("main", &base, &draft), Err(CoreError::PatchFailed(_))));
-    assert_eq!(std::fs::read(d.path().join("main.cv.json")).unwrap(), before);
+    assert!(matches!(
+        lib.save_draft("main", &base, &draft),
+        Err(CoreError::PatchFailed(_))
+    ));
+    assert_eq!(
+        std::fs::read(d.path().join("main.cv.json")).unwrap(),
+        before
+    );
 }
 
 #[test]
@@ -196,8 +272,14 @@ fn draft_root_add_conflict_detected() {
     let p = patch(json!([{"op":"add","path":"/awards","value":[{"title":"Agent"}]}]));
     lib.patch_cv("main", &p, Author::Agent, None).unwrap();
     let before = std::fs::read(d.path().join("main.cv.json")).unwrap();
-    assert!(matches!(lib.save_draft("main", &base, &draft), Err(CoreError::PatchFailed(_))));
-    assert_eq!(std::fs::read(d.path().join("main.cv.json")).unwrap(), before);
+    assert!(matches!(
+        lib.save_draft("main", &base, &draft),
+        Err(CoreError::PatchFailed(_))
+    ));
+    assert_eq!(
+        std::fs::read(d.path().join("main.cv.json")).unwrap(),
+        before
+    );
 }
 
 #[test]
