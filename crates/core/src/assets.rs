@@ -1,4 +1,3 @@
-#![allow(dead_code)] // inlining helpers are consumed by rendering (Task 6)
 use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::sync::LazyLock;

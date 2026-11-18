@@ -321,10 +321,10 @@ impl Library {
     }
 
     pub fn set_cv_theme(&self, name: &str, theme_id: &str, author: Author) -> Result<Saved, CoreError> {
-        // Theme existence is checked once themes land (Task 6).
         with_lock(&self.root, || {
             self.sweep_external()?;
             let mut cv = self.read_cv(name)?.cv;
+            self.get_theme(theme_id)?;
             let obj = cv.as_object_mut().ok_or_else(|| CoreError::PatchFailed("CV is not an object".into()))?;
             obj.entry("meta")
                 .or_insert_with(|| serde_json::json!({}))

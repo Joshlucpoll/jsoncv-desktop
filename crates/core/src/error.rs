@@ -20,6 +20,8 @@ pub enum CoreError {
     ReadOnly(String),
     #[error("browser error: {0}")]
     Browser(String),
+    #[error("render error: {0}")]
+    Render(crate::render::RenderError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]

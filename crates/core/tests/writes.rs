@@ -117,8 +117,13 @@ fn cannot_delete_or_rename_main() {
 #[test]
 fn set_theme() {
     let (_d, lib) = setup();
-    lib.set_cv_theme("main", "builtin:classic", Author::You).unwrap();
-    assert_eq!(lib.read_cv("main").unwrap().cv["meta"]["theme"], "builtin:classic");
+    let t = _d.path().join("themes/t1");
+    std::fs::create_dir_all(&t).unwrap();
+    std::fs::write(t.join("template.html.j2"), "x").unwrap();
+    std::fs::write(t.join("style.css"), "").unwrap();
+    std::fs::write(t.join("theme.json"), r#"{"name":"T","description":"d","page":{"size":"A4"}}"#).unwrap();
+    lib.set_cv_theme("main", "t1", Author::You).unwrap();
+    assert_eq!(lib.read_cv("main").unwrap().cv["meta"]["theme"], "t1");
 }
 
 #[test]
