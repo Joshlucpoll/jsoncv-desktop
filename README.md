@@ -80,7 +80,7 @@ The server reads the library path from the app's Settings. To override it, add `
 
 ## Themes
 
-Themes live in `<library>/themes/<theme-id>/`. Built-in themes (`builtin:classic`, `builtin:two-column`) are read-only. Use "Duplicate" in the Themes view to copy one into your library. The theme authoring guide is an MCP resource, so an agent can write themes. In templates, use the `safe_url` helper for URLs.
+Themes live in `<library>/themes/<theme-id>/`. Built-in themes (`builtin:classic`, `builtin:two-column`) are read-only. Use "Duplicate" in the Themes view to copy one into your library. The theme authoring guide is an MCP resource, so an agent can write themes. In templates, pass URLs through the `safe_url` filter.
 
 ## Releases
 
