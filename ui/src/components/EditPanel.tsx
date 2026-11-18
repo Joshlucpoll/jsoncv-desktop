@@ -97,9 +97,11 @@ type Props = {
   onError(message: string): void
   /** The panel registers a check App runs before closing it or switching CV. */
   leaveRef: { current: (() => Promise<boolean>) | null }
+  /** Saves any pending draft without leaving; resolves true when nothing unsaved remains. */
+  saveRef: { current: (() => Promise<boolean>) | null }
 }
 
-export function EditPanel({ name, onClose, onError, leaveRef }: Props) {
+export function EditPanel({ name, onClose, onError, leaveRef, saveRef }: Props) {
   const [schema, setSchema] = useState<RJSFSchema>()
   const [base, setBase] = useState<unknown>()
   const [draft, setDraft] = useState<unknown>()
@@ -250,16 +252,20 @@ export function EditPanel({ name, onClose, onError, leaveRef }: Props) {
 
   // App calls this before closing the panel or switching CV. false cancels the leave.
   useEffect(() => {
-    leaveRef.current = async () => {
+    const save = async () => {
       for (let i = 0; i < 3 && unsavedDraft() && !conflictRef.current && !jsonErrRef.current && isValid(draftRef.current); i++) await flush()
-      if (!dirty()) return true
+      return !dirty()
+    }
+    saveRef.current = save
+    leaveRef.current = async () => {
+      if (await save()) return true
       if (conflictRef.current || jsonErrRef.current || !isValid(draftRef.current)) {
         return confirmLeave("You have unsaved changes that can't be saved yet. Discard them?")
       }
       return confirmLeave(`Couldn't save: ${lastError.current ?? 'unknown error'}. Discard your changes?`)
     }
-    return () => { leaveRef.current = null }
-  }, [flush, leaveRef, onError])
+    return () => { leaveRef.current = null; saveRef.current = null }
+  }, [flush, leaveRef, saveRef, onError])
 
   const discard = async () => {
     window.clearTimeout(timer.current)

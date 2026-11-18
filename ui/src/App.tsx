@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { open } from '@tauri-apps/plugin-dialog'
-import { type ApiError, type CvInfo, type ExportFormat, type LibraryConfig, type ThemeInfo, type Version, binaryPath, errorMessage, exportCv, getConfig, listCvs, listThemes, onLibraryChanged, printCv, reveal, setCvTheme, setLibrary } from './api.ts'
+import { ask, open } from '@tauri-apps/plugin-dialog'
+import { MOCK, type ApiError, type CvInfo, type ExportFormat, type LibraryConfig, type ThemeInfo, type Version, binaryPath, errorMessage, exportCv, getConfig, listCvs, listThemes, onLibraryChanged, printCv, reveal, setCvTheme, setLibrary } from './api.ts'
 import { revealLabel } from './lib/platform.ts'
 import { Settings } from './components/Settings.tsx'
 import { ThemeDetail } from './components/ThemesView.tsx'
@@ -19,6 +19,7 @@ export default function App() {
   const [error, setError] = useState<string>()
   const [editing, setEditing] = useState(false)
   const leaveRef = useRef<(() => Promise<boolean>) | null>(null)
+  const saveRef = useRef<(() => Promise<boolean>) | null>(null)
   // Run `go` only if the edit panel (when open) agrees to leave: it saves or asks before dropping a draft.
   const guarded = useCallback(async (go: () => void) => {
     if (!leaveRef.current || (await leaveRef.current())) go()
@@ -83,6 +84,11 @@ export default function App() {
   const doExport = async (f: ExportFormat) => {
     setExported(undefined)
     setNeedsBrowser(false)
+    // Flush a pending draft first so the export matches the screen; keep the panel open.
+    if (saveRef.current && !(await saveRef.current())) {
+      const msg = 'Your latest edits could not be saved. Export the last saved version instead?'
+      if (!(MOCK ? window.confirm(msg) : await ask(msg, { title: 'Export', kind: 'warning' }))) return
+    }
     try {
       setExported(await exportCv(current, f))
     } catch (e) {
@@ -108,7 +114,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => { setViewing(undefined); setSelected(n) }))} onChanged={reloadCvs} onError={fail} reloadKey={reloadKey} viewing={viewing?.commit} onView={(v) => void viewVersion(v)} view={view} onView2={setView} themes={themes} theme={themeInfo?.id} onTheme={setThemeSel} onSettings={() => setSettingsOpen(true)} />
+      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => { setViewing(undefined); setExported(undefined); setNeedsBrowser(false); setSelected(n) }))} onChanged={reloadCvs} onError={fail} reloadKey={reloadKey} viewing={viewing?.commit} onView={(v) => void viewVersion(v)} view={view} onViewMode={setView} themes={themes} theme={themeInfo?.id} onTheme={setThemeSel} onSettings={() => setSettingsOpen(true)} />
       <main className="main">
         <Toolbar
           name={current}
@@ -132,7 +138,7 @@ export default function App() {
         {config?.fallbackFrom && !fallbackDismissed && (
           <div className="banner" role="alert">
             <span>Couldn't open {config.fallbackFrom.path}: {config.fallbackFrom.message}. Using {config.library} instead.</span>
-            <button className="link" onClick={() => setSettingsOpen(true)}>Choose folder…</button>
+            <button className="link" onClick={changeLibrary}>Choose folder…</button>
             <button className="link" onClick={() => setFallbackDismissed(true)}>Dismiss</button>
           </div>
         )}
@@ -164,17 +170,17 @@ export default function App() {
           <ThemeDetail
             key={themeInfo.id}
             theme={themeInfo} library={config?.library ?? ''} reloadKey={reloadKey} cvName={current}
-            onUse={() => setCvTheme(current, themeInfo.id).then(reloadCvs, fail)}
+            useDisabled={!!viewing} onUse={() => setCvTheme(current, themeInfo.id).then(reloadCvs, fail)}
             onDuplicated={(t) => { void reloadThemes(); setThemeSel(t.id) }}
             onError={fail}
           />
         )}
         <div className="workspace">
           <Preview cv={current} commit={viewing?.commit} theme={themesView ? themeInfo.id : undefined} reloadKey={reloadKey} />
-          {editing && <EditPanel key={current} name={current} leaveRef={leaveRef} onError={fail} onClose={() => void guarded(() => setEditing(false))} />}
+          {editing && <EditPanel key={current} name={current} leaveRef={leaveRef} saveRef={saveRef} onError={fail} onClose={() => void guarded(() => setEditing(false))} />}
         </div>
       </main>
-      {settingsOpen && config && <Settings config={config} binary={binary} onChange={changeLibrary} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <Settings config={config} binary={binary} onChange={changeLibrary} onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }
