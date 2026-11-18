@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use chromiumoxide::cdp::browser_protocol::emulation::SetDeviceMetricsOverrideParams;
+use chromiumoxide::cdp::browser_protocol::emulation::{SetDeviceMetricsOverrideParams, SetScriptExecutionDisabledParams};
 use chromiumoxide::cdp::browser_protocol::page::{PrintToPdfParams, Viewport};
 use chromiumoxide::page::ScreenshotParams;
 use chromiumoxide::{Browser, BrowserConfig};
@@ -76,6 +76,8 @@ where
 
     let run = async {
         let page = browser.new_page("about:blank").await.map_err(browser_err)?;
+        // Themes are untrusted: no page scripts. set_content itself runs over CDP, which still works.
+        page.execute(SetScriptExecutionDisabledParams::new(true)).await.map_err(browser_err)?;
         page.set_content(html).await.map_err(browser_err)?;
         f(page).await
     };
@@ -98,8 +100,18 @@ where
     res
 }
 
-pub async fn html_to_pdf(html: &str, out: &Path) -> Result<(), CoreError> {
-    let params = PrintToPdfParams::builder().prefer_css_page_size(true).print_background(true).build();
+/// `size` is the fallback paper size; a CSS `@page` size still wins.
+pub async fn html_to_pdf(html: &str, out: &Path, size: PageSize) -> Result<(), CoreError> {
+    let (w, h) = match size {
+        PageSize::A4 => (8.27, 11.69),
+        PageSize::Letter => (8.5, 11.0),
+    };
+    let params = PrintToPdfParams::builder()
+        .prefer_css_page_size(true)
+        .paper_width(w)
+        .paper_height(h)
+        .print_background(true)
+        .build();
     let bytes = with_page(html, |page| async move { page.pdf(params).await.map_err(browser_err) }).await?;
     tokio::fs::write(out, bytes).await?;
     Ok(())
@@ -139,7 +151,7 @@ impl Library {
         let ext = if format == ExportFormat::Pdf { "pdf" } else { "html" };
         let out = dir.join(format!("{flat}-{}.{ext}", id.strip_prefix("builtin:").unwrap_or(&id)));
         if format == ExportFormat::Pdf {
-            html_to_pdf(&html, &out).await?;
+            html_to_pdf(&html, &out, self.get_theme(&id)?.info.meta.page.size).await?;
         } else {
             std::fs::write(&out, html)?;
         }

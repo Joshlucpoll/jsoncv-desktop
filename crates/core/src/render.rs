@@ -418,8 +418,13 @@ fn safe_url(u: pulldown_cmark::CowStr<'_>) -> pulldown_cmark::CowStr<'_> {
     // Browsers ignore whitespace/control chars inside a scheme, so drop them before checking.
     let t: String = u.chars().filter(|c| !c.is_whitespace() && !c.is_control()).collect::<String>().to_lowercase();
     let scheme = t.split(['/', '?', '#']).next().unwrap_or("").split_once(':').map(|(s, _)| s);
+    // Inlined local images arrive as data: URIs; allow raster/SVG images only.
+    let data_img = ["png", "jpeg", "gif", "webp", "svg+xml"]
+        .iter()
+        .any(|m| t.strip_prefix("data:image/").and_then(|r| r.strip_prefix(m)).is_some_and(|r| r.starts_with([';', ','])));
     match scheme {
         None | Some("http" | "https" | "mailto" | "tel") => u,
+        Some("data") if data_img => u,
         Some(_) => "#".into(),
     }
 }
@@ -474,6 +479,11 @@ mod tests {
         assert_eq!(f("/rel"), "/rel");
         assert_eq!(f("JavaScript:alert(1)"), "#");
         assert_eq!(f(" java\nscript:alert(1)"), "#");
+        assert_eq!(f("data:image/png;base64,AAAA"), "data:image/png;base64,AAAA");
+        assert_eq!(f("data:image/svg+xml;base64,AAAA"), "data:image/svg+xml;base64,AAAA");
+        assert_eq!(f("DATA:image/jpeg;base64,AA"), "DATA:image/jpeg;base64,AA");
+        assert_eq!(f("data:text/html;base64,AAAA"), "#");
+        assert_eq!(f("data:image/pngx;base64,AA"), "#");
     }
 
     #[test]

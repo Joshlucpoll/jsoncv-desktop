@@ -1,4 +1,4 @@
-use jsoncv_core::export::{find_browser, html_to_png, ExportFormat};
+use jsoncv_core::export::{find_browser, html_to_pdf, html_to_png, ExportFormat};
 use jsoncv_core::library::Library;
 use jsoncv_core::render::PageSize;
 use jsoncv_core::Author;
@@ -84,4 +84,38 @@ async fn png_preview_is_png() {
     assert_eq!(dims(&png), (1588, 2246));
     let png = html_to_png("<html><body>hi</body></html>", PageSize::Letter).await.unwrap();
     assert_eq!(dims(&png), (1632, 2112));
+}
+
+#[tokio::test]
+async fn theme_scripts_do_not_run() {
+    if find_browser().is_none() {
+        eprintln!("skip: no browser");
+        return;
+    }
+    // With JavaScript on, the busy loop wedges the page and the export times out.
+    let html = "<html><body>hi<script>document.body.innerHTML='HACKED';while(true){}</script></body></html>";
+    let png = html_to_png(html, PageSize::A4).await.unwrap();
+    assert_eq!(dims(&png), (1588, 2246));
+}
+
+#[tokio::test]
+async fn pdf_paper_falls_back_to_theme_size() {
+    if find_browser().is_none() {
+        eprintln!("skip: no browser");
+        return;
+    }
+    let d = tempfile::tempdir().unwrap();
+    let out = d.path().join("x.pdf");
+    let media = |b: Vec<u8>| {
+        let s = String::from_utf8_lossy(&b).into_owned();
+        let i = s.find("/MediaBox").expect("MediaBox");
+        s[i..i + 40].to_string()
+    };
+    html_to_pdf("<html><body>hi</body></html>", &out, PageSize::A4).await.unwrap();
+    assert!(media(std::fs::read(&out).unwrap()).contains("595."), "{}", media(std::fs::read(&out).unwrap()));
+    html_to_pdf("<html><body>hi</body></html>", &out, PageSize::Letter).await.unwrap();
+    assert!(media(std::fs::read(&out).unwrap()).contains("612"), "{}", media(std::fs::read(&out).unwrap()));
+    let html = "<html><body>hi<script>while(true){}</script></body></html>";
+    html_to_pdf(html, &out, PageSize::A4).await.unwrap();
+    assert!(std::fs::read(&out).unwrap().starts_with(b"%PDF"));
 }

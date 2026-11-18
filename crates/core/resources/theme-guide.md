@@ -39,7 +39,7 @@ Write a full HTML document with a `<head>`. The renderer adds your CSS as a `<st
 | --- | --- | --- | --- |
 | `format_date(fmt)` | Format an ISO date (`YYYY`, `YYYY-MM`, `YYYY-MM-DD`). Tokens: `%Y %m %d %b %B`. | `{{ "2021-03" \| format_date("%b %Y") }}` | `Mar 2021` |
 | `markdown` | Render Markdown to safe HTML. Raw HTML in the text is shown as text. Links keep only `http`, `https`, `mailto`, `tel` and relative targets. | `{{ job.summary \| markdown }}` | `<p>…</p>` |
-| `safe_url` | Make a URL safe for `href` or `src`. Keeps `http`, `https`, `mailto`, `tel` and relative targets. Any other scheme (such as `javascript:`) becomes `#`. Always use it on CV-supplied links. | `<a href="{{ cv.basics.url \| safe_url }}">` | `<a href="https://example.com">` |
+| `safe_url` | Make a URL safe for `href` or `src`. Keeps `http`, `https`, `mailto`, `tel`, relative targets and inlined images (`data:image/` png, jpeg, gif, webp or svg+xml). Any other scheme (such as `javascript:`) becomes `#`. Always use it on CV-supplied links. | `<a href="{{ cv.basics.url \| safe_url }}">` | `<a href="https://example.com">` |
 | `strip_scheme` | Remove `https://` or `http://` and a trailing `/`. | `{{ cv.basics.url \| strip_scheme }}` | `example.com` |
 
 A date that does not match one of the three formats prints unchanged. A missing date prints nothing. Show "Present" for a missing end date:
