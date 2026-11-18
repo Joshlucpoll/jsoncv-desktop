@@ -26,10 +26,10 @@ fn builtin_themes_render_sample() {
 #[test]
 fn builtin_themes_render_minimal_cv() {
     let (_d, lib) = lib();
-    for cv in [json!({"basics":{"name":"A"}}), json!({"basics":{"name":"A"},"work":[],"skills":[],"education":[],"profiles":[]})] {
+    for cv in [json!({"basics":{"name":"A"}}), json!({"basics":{"name":"A","profiles":[]},"work":[],"skills":[],"education":[]})] {
         for t in THEMES {
             let out = lib.render(&cv, t).unwrap();
-            assert!(out.contains("A"), "{t}");
+            assert!(out.contains(">A<"), "{t}");
             for h in ["Work", "Education", "Skills", "Projects", "Languages", "Interests", "Profiles"] {
                 assert!(!out.contains(&format!(">{h}<")), "{t} shows empty {h}");
             }
@@ -82,4 +82,32 @@ fn builtins_are_listed_first() {
     std::fs::write(t.join("theme.json"), r#"{"name":"M","description":"d","page":{"size":"A4"}}"#).unwrap();
     let ids: Vec<String> = lib.list_themes().unwrap().into_iter().map(|t| t.id).collect();
     assert_eq!(ids, ["builtin:classic", "builtin:two-column", "mine"]);
+}
+
+#[test]
+fn builtin_themes_escape_html_and_block_js_urls() {
+    let (_d, lib) = lib();
+    let cv = json!({"basics":{"name":"<script>x</script>","url":"javascript:alert(1)","profiles":[{"network":"n","url":"JavaScript:alert(1)"}]},
+        "work":[{"name":"C","position":"<script>y</script>","url":"javascript:alert(1)"}],
+        "certificates":[{"name":"c","url":"javascript:alert(1)"}]});
+    for t in THEMES {
+        let out = lib.render(&cv, t).unwrap().to_lowercase();
+        assert!(!out.contains("<script>") && !out.contains("href=\"javascript:"), "{t}");
+        assert!(out.contains("&lt;script&gt;"), "{t}");
+    }
+}
+
+#[test]
+fn builtin_themes_render_extra_schema_fields() {
+    let (_d, lib) = lib();
+    let cv = json!({"basics":{"name":"A","location":{"address":"1 Main St","postalCode":"12345","city":"Town"}},
+        "projects":[{"name":"P","type":"talk","entity":"ACME","roles":["Lead","Speaker"]}],
+        "education":[{"institution":"E","url":"https://uni.example/"}],
+        "languages":[{"language":"L","summary":"ZZLangSummary"}]});
+    for t in THEMES {
+        let out = lib.render(&cv, t).unwrap();
+        for n in ["1 Main St", "12345", "talk", "ACME", "Lead, Speaker", "uni.example", "ZZLangSummary"] {
+            assert!(out.contains(n), "{t} missing {n}");
+        }
+    }
 }

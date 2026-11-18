@@ -218,6 +218,7 @@ pub(crate) fn environment() -> Environment<'static> {
     env.add_function("format_date", |v: Value, fmt: String| format_date(&v, &fmt));
     env.add_filter("markdown", markdown);
     env.add_filter("strip_scheme", strip_scheme);
+    env.add_filter("safe_url", |u: Option<String>| safe_url(u.unwrap_or_default().into()).to_string());
     env
 }
 
@@ -340,6 +341,16 @@ mod tests {
         assert!(md("[x](https://a.com)").contains(r#"href="https://a.com""#));
         assert!(md("[x](#top)").contains(r##"href="#top""##));
         assert!(md("[x](mailto:a@b.c)").contains("mailto:a@b.c"));
+    }
+
+    #[test]
+    fn safe_url_filter() {
+        let f = |u: &str| environment().render_str("{{ u | safe_url | safe }}", minijinja::context! { u => u }).unwrap();
+        assert_eq!(f("https://a.com/x"), "https://a.com/x");
+        assert_eq!(f("mailto:a@b.c"), "mailto:a@b.c");
+        assert_eq!(f("/rel"), "/rel");
+        assert_eq!(f("JavaScript:alert(1)"), "#");
+        assert_eq!(f(" java\nscript:alert(1)"), "#");
     }
 
     #[test]
