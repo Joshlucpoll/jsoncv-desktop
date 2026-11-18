@@ -84,8 +84,15 @@ where
         Err(_) => Err(CoreError::Browser("Timed out waiting for the browser".into())),
     };
 
-    let _ = browser.close().await;
-    let _ = browser.wait().await;
+    // A wedged Chrome never answers close, so bound it and then kill.
+    let closed = tokio::time::timeout(Duration::from_secs(5), async {
+        let _ = browser.close().await;
+        let _ = browser.wait().await;
+    })
+    .await;
+    if closed.is_err() {
+        let _ = browser.kill().await;
+    }
     task.abort();
     let _ = task.await;
     res
@@ -94,7 +101,7 @@ where
 pub async fn html_to_pdf(html: &str, out: &Path) -> Result<(), CoreError> {
     let params = PrintToPdfParams::builder().prefer_css_page_size(true).print_background(true).build();
     let bytes = with_page(html, |page| async move { page.pdf(params).await.map_err(browser_err) }).await?;
-    std::fs::write(out, bytes)?;
+    tokio::fs::write(out, bytes).await?;
     Ok(())
 }
 
@@ -114,12 +121,17 @@ pub async fn html_to_png(html: &str, size: PageSize) -> Result<Vec<u8>, CoreErro
 
 impl Library {
     pub async fn export(&self, name: &str, format: ExportFormat, theme: Option<&str>) -> Result<PathBuf, CoreError> {
+        let cv_path = self.cv_path(name)?;
         let dir = self.root().join("exports");
         std::fs::create_dir_all(&dir)?;
         let flat = name.replace('/', "-");
         if format == ExportFormat::Json {
             let out = dir.join(format!("{flat}.json"));
-            std::fs::write(&out, std::fs::read(self.root().join(format!("{name}.cv.json")))?)?;
+            let bytes = std::fs::read(&cv_path).map_err(|e| match e.kind() {
+                std::io::ErrorKind::NotFound => CoreError::NotFound(name.to_string()),
+                _ => e.into(),
+            })?;
+            std::fs::write(&out, bytes)?;
             return Ok(out);
         }
         let id = self.effective_theme(name, theme)?;
