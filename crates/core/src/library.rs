@@ -4,6 +4,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use crate::history::{commit, with_lock};
 use crate::{schema, Author, CoreError};
 
 const SAMPLE: &str = include_str!("../resources/sample.cv.json");
@@ -20,6 +21,12 @@ pub struct CvInfo {
     pub tailored_from: Option<String>,
     pub modified_ms: i64,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Saved {
+    pub commit: String,
+    pub base: String,
 }
 
 #[derive(Debug, Clone)]
@@ -145,4 +152,187 @@ impl Library {
         }
         Ok(out)
     }
+
+    /// Validate, write atomically, commit. Caller holds the lock and has swept.
+    fn write_locked(&self, name: &str, cv: &Value, author: Author, message: &str) -> Result<Saved, CoreError> {
+        let path = self.cv_path(name)?;
+        schema::validate(cv).map_err(CoreError::Invalid)?;
+        let bytes = (serde_json::to_string_pretty(cv)? + "\n").into_bytes();
+        let tmp = path.with_file_name(format!(
+            ".{}.tmp-{}",
+            path.file_name().unwrap().to_string_lossy(),
+            std::process::id()
+        ));
+        let res = (|| -> std::io::Result<()> {
+            let mut f = std::fs::File::create(&tmp)?;
+            std::io::Write::write_all(&mut f, &bytes)?;
+            f.sync_all()?;
+            std::fs::rename(&tmp, &path)
+        })();
+        if let Err(e) = res {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e.into());
+        }
+        let rel = format!("{name}.cv.json");
+        let commit = commit(&self.root, &[Path::new(&rel)], author, message)?;
+        Ok(Saved { commit, base: sha_hex(&bytes) })
+    }
+
+    fn write_validated(&self, name: &str, cv: &Value, author: Author, message: &str) -> Result<Saved, CoreError> {
+        with_lock(&self.root, || {
+            self.sweep_external()?;
+            self.write_locked(name, cv, author, message)
+        })
+    }
+
+    pub fn patch_cv(
+        &self,
+        name: &str,
+        patch: &json_patch::Patch,
+        author: Author,
+        message: Option<&str>,
+    ) -> Result<Saved, CoreError> {
+        with_lock(&self.root, || {
+            self.sweep_external()?;
+            let mut cv = self.read_cv(name)?.cv;
+            json_patch::patch(&mut cv, patch).map_err(|e| CoreError::PatchFailed(e.to_string()))?;
+            let msg = message.map(String::from).unwrap_or_else(|| default_message(patch));
+            self.write_locked(name, &cv, author, &msg)
+        })
+    }
+
+    pub fn replace_cv(
+        &self,
+        name: &str,
+        cv: Value,
+        base: &str,
+        author: Author,
+        message: Option<&str>,
+    ) -> Result<Saved, CoreError> {
+        with_lock(&self.root, || {
+            self.sweep_external()?;
+            if self.read_cv(name)?.base != base {
+                return Err(CoreError::Stale);
+            }
+            self.write_locked(name, &cv, author, message.unwrap_or("Replaced CV"))
+        })
+    }
+
+    pub fn save_draft(&self, name: &str, base_cv: &Value, draft: &Value) -> Result<Saved, CoreError> {
+        let ops = serde_json::to_value(json_patch::diff(base_cv, draft))?;
+        let ops = ops.as_array().cloned().unwrap_or_default();
+        // Guards first: each touched existing value must still equal what the user saw.
+        let mut all: Vec<Value> = ops
+            .iter()
+            .filter(|o| matches!(o["op"].as_str(), Some("replace" | "remove")))
+            .filter_map(|o| {
+                let path = o["path"].as_str()?;
+                Some(serde_json::json!({"op":"test","path":path,"value":base_cv.pointer(path)?}))
+            })
+            .collect();
+        all.extend(ops);
+        let patch: json_patch::Patch = serde_json::from_value(Value::Array(all))?;
+        self.patch_cv(name, &patch, Author::You, None)
+    }
+
+    pub fn restore(&self, name: &str, commit: &str, author: Author) -> Result<Saved, CoreError> {
+        let cv = self.read_cv_at(name, commit)?;
+        let id = git2::Repository::open(&self.root)?
+            .revparse_single(commit)?
+            .peel_to_commit()?
+            .id()
+            .to_string();
+        self.write_validated(name, &cv, author, &format!("Restored version {}", &id[..7]))
+    }
+
+    pub fn create_tailored(&self, slug: &str, from: &str, author: Author) -> Result<CvInfo, CoreError> {
+        let name = format!("tailored/{slug}");
+        let target = self.cv_path(&name)?;
+        with_lock(&self.root, || {
+            self.sweep_external()?;
+            if target.exists() {
+                return Err(CoreError::BadName(format!("{name} already exists")));
+            }
+            let mut cv = self.read_cv(from)?.cv;
+            let head = git2::Repository::open(&self.root)?.head()?.peel_to_commit()?.id().to_string();
+            cv.as_object_mut()
+                .ok_or_else(|| CoreError::PatchFailed("CV is not an object".into()))?
+                .entry("meta")
+                .or_insert_with(|| serde_json::json!({}))
+                .as_object_mut()
+                .ok_or_else(|| CoreError::PatchFailed("meta is not an object".into()))?
+                .insert("tailoredFrom".into(), serde_json::json!({"cv": from, "commit": head}));
+            self.write_locked(&name, &cv, author, &format!("Created {name} from {from}"))
+        })?;
+        self.info(&name)
+    }
+
+    fn info(&self, name: &str) -> Result<CvInfo, CoreError> {
+        self.list_cvs()?.into_iter().find(|i| i.name == name).ok_or_else(|| CoreError::NotFound(name.into()))
+    }
+
+    pub fn rename_cv(&self, name: &str, new_slug: &str, author: Author) -> Result<CvInfo, CoreError> {
+        let old = self.cv_path(name)?;
+        if name == "main" {
+            return Err(CoreError::ReadOnly("main cannot be renamed".into()));
+        }
+        let new_name = format!("tailored/{new_slug}");
+        let new = self.cv_path(&new_name)?;
+        with_lock(&self.root, || {
+            self.sweep_external()?;
+            if !old.exists() {
+                return Err(CoreError::NotFound(name.into()));
+            }
+            if new.exists() {
+                return Err(CoreError::BadName(format!("{new_name} already exists")));
+            }
+            std::fs::rename(&old, &new)?;
+            let (a, b) = (format!("{name}.cv.json"), format!("{new_name}.cv.json"));
+            commit(&self.root, &[Path::new(&a), Path::new(&b)], author, &format!("Renamed {name} to {new_name}"))?;
+            Ok(())
+        })?;
+        self.info(&new_name)
+    }
+
+    pub fn delete_cv(&self, name: &str, author: Author) -> Result<(), CoreError> {
+        let path = self.cv_path(name)?;
+        if name == "main" {
+            return Err(CoreError::ReadOnly("main cannot be deleted".into()));
+        }
+        with_lock(&self.root, || {
+            self.sweep_external()?;
+            std::fs::remove_file(&path).map_err(|e| match e.kind() {
+                std::io::ErrorKind::NotFound => CoreError::NotFound(name.into()),
+                _ => e.into(),
+            })?;
+            let rel = format!("{name}.cv.json");
+            commit(&self.root, &[Path::new(&rel)], author, &format!("Deleted {name}"))?;
+            Ok(())
+        })
+    }
+
+    pub fn set_cv_theme(&self, name: &str, theme_id: &str, author: Author) -> Result<Saved, CoreError> {
+        // Theme existence is checked once themes land (Task 6).
+        let doc = self.read_cv(name)?;
+        let op = if doc.cv["meta"].is_object() {
+            serde_json::json!([{"op":"add","path":"/meta/theme","value":theme_id}])
+        } else {
+            serde_json::json!([{"op":"add","path":"/meta","value":{"theme":theme_id}}])
+        };
+        let patch: json_patch::Patch = serde_json::from_value(op)?;
+        self.patch_cv(name, &patch, author, Some(&format!("Theme set to {theme_id}")))
+    }
+}
+
+fn default_message(patch: &json_patch::Patch) -> String {
+    let mut keys: Vec<String> = vec![];
+    for op in serde_json::to_value(patch).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default() {
+        let path = op["path"].as_str().unwrap_or("");
+        let k = path.trim_start_matches('/').split('/').next().filter(|k| !k.is_empty()).unwrap_or("cv");
+        let k = k.replace("~1", "/").replace("~0", "~");
+        if !keys.contains(&k) {
+            keys.push(k);
+        }
+    }
+    format!("Edited {}", keys.join(", "))
 }
