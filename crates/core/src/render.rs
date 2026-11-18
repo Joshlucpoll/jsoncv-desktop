@@ -1,6 +1,8 @@
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
 use minijinja::{Environment, Value};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::assets::{inline_cv_assets, inline_theme_assets};
@@ -110,10 +112,11 @@ impl Library {
 
     pub fn list_themes(&self) -> Result<Vec<ThemeInfo>, CoreError> {
         let mut out: Vec<ThemeInfo> = builtin_themes().iter().map(|b| b.files().info).collect();
-        let mut ids: Vec<String> = std::fs::read_dir(self.root().join("themes"))?
-            .filter_map(|e| e.ok()?.file_name().into_string().ok())
-            .filter(|id| valid_theme_id(id))
-            .collect();
+        let mut ids: Vec<String> = match std::fs::read_dir(self.root().join("themes")) {
+            Ok(rd) => rd.filter_map(|e| e.ok()?.file_name().into_string().ok()).filter(|id| valid_theme_id(id)).collect(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
+            Err(e) => return Err(e.into()),
+        };
         ids.sort();
         for id in ids {
             if let Ok(t) = self.get_theme(&id) {
@@ -161,8 +164,10 @@ impl Library {
                     line: e.line(),
                 })
             })?;
-        let style = format!("<style>{css}</style>");
-        Ok(match body.find("</head>") {
+        static STYLE_END: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)</style").unwrap());
+        static HEAD_END: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)</head>").unwrap());
+        let style = format!("<style>{}</style>", STYLE_END.replace_all(&css, r"<\/style"));
+        Ok(match HEAD_END.find(&body).map(|m| m.start()) {
             Some(i) => format!("{}{style}{}", &body[..i], &body[i..]),
             None => format!(
                 "<!doctype html><html><head><meta charset=\"utf-8\">{style}</head><body>{body}</body></html>"
@@ -175,9 +180,15 @@ impl Library {
             Some(sha) => self.read_cv_at(name, sha)?,
             None => self.read_cv(name)?.cv,
         };
-        let id = theme.or_else(|| cv["meta"]["theme"].as_str()).unwrap_or("builtin:classic");
+        if let Some(id) = theme {
+            return self.render(&cv, id);
+        }
+        let id = cv["meta"]["theme"].as_str().unwrap_or("builtin:classic");
         match self.render(&cv, id) {
-            Err(CoreError::NotFound(_)) if id != "builtin:classic" => self.render(&cv, "builtin:classic"),
+            // Only a stale or hand-edited meta.theme falls back; an explicit choice reports its error.
+            Err(CoreError::NotFound(_) | CoreError::BadName(_)) if id != "builtin:classic" => {
+                self.render(&cv, "builtin:classic")
+            }
             r => r,
         }
     }
@@ -244,10 +255,16 @@ pub(crate) fn format_date(v: &Value, fmt: &str) -> String {
 }
 
 fn markdown(text: Option<String>) -> Value {
-    use pulldown_cmark::{html::push_html, Event, Parser};
+    use pulldown_cmark::{html::push_html, Event, Parser, Tag};
     let text = text.unwrap_or_default();
     let events = Parser::new(&text).map(|e| match e {
         Event::Html(s) | Event::InlineHtml(s) => Event::Text(s),
+        Event::Start(Tag::Link { link_type, dest_url, title, id }) => {
+            Event::Start(Tag::Link { link_type, dest_url: safe_url(dest_url), title, id })
+        }
+        Event::Start(Tag::Image { link_type, dest_url, title, id }) => {
+            Event::Start(Tag::Image { link_type, dest_url: safe_url(dest_url), title, id })
+        }
         e => e,
     });
     let mut out = String::new();
@@ -255,9 +272,24 @@ fn markdown(text: Option<String>) -> Value {
     Value::from_safe_string(out)
 }
 
+/// Allow only http(s), mailto, tel or scheme-less (relative / `#`) destinations.
+fn safe_url(u: pulldown_cmark::CowStr<'_>) -> pulldown_cmark::CowStr<'_> {
+    // Browsers ignore whitespace/control chars inside a scheme, so drop them before checking.
+    let t: String = u.chars().filter(|c| !c.is_whitespace() && !c.is_control()).collect::<String>().to_lowercase();
+    let scheme = t.split(['/', '?', '#']).next().unwrap_or("").split_once(':').map(|(s, _)| s);
+    match scheme {
+        None | Some("http" | "https" | "mailto" | "tel") => u,
+        Some(_) => "#".into(),
+    }
+}
+
 fn strip_scheme(url: Option<String>) -> String {
     let u = url.unwrap_or_default();
-    let u = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")).unwrap_or(&u);
+    let n = ["https://", "http://"]
+        .iter()
+        .find(|p| u.get(..p.len()).is_some_and(|h| h.eq_ignore_ascii_case(p)))
+        .map_or(0, |p| p.len());
+    let u = &u[n..];
     u.strip_suffix('/').unwrap_or(u).to_string()
 }
 
@@ -282,7 +314,20 @@ mod tests {
     }
 
     #[test]
+    fn markdown_strips_javascript_links() {
+        let md = |t: &str| environment().render_str("{{ t | markdown }}", minijinja::context! { t => t }).unwrap();
+        for bad in ["[x](javascript:alert(1))", "[x](JaVaScRiPt:alert(1))", "[x](<  javascript:alert(1)>)", "![x](data:text/html,a)"] {
+            let o = md(bad);
+            assert!(!o.to_lowercase().contains("javascript:") && !o.contains("data:"), "{bad} -> {o}");
+        }
+        assert!(md("[x](https://a.com)").contains(r#"href="https://a.com""#));
+        assert!(md("[x](#top)").contains(r##"href="#top""##));
+        assert!(md("[x](mailto:a@b.c)").contains("mailto:a@b.c"));
+    }
+
+    #[test]
     fn strip_scheme_cases() {
+        assert_eq!(strip_scheme(Some("HTTPS://A.com/".into())), "A.com");
         assert_eq!(strip_scheme(Some("https://a.com/".into())), "a.com");
         assert_eq!(strip_scheme(Some("http://a.com/x".into())), "a.com/x");
         assert_eq!(strip_scheme(None), "");

@@ -57,9 +57,39 @@ fn render_cv_uses_meta_theme_and_commit() {
     let (_d, lib) = setup("N={{ cv.basics.name }}");
     lib.set_cv_theme("main", "t1", Author::You).unwrap();
     assert!(lib.render_cv("main", None, None).unwrap().contains("N="));
-    let first = lib.history("main", 50).unwrap().last().unwrap().commit.clone();
-    let old_name = lib.read_cv_at("main", &first).unwrap()["basics"]["name"].as_str().unwrap().to_string();
-    assert!(lib.render_cv("main", Some("t1"), Some(&first)).unwrap().contains(&format!("N={old_name}")));
+    let head = lib.history("main", 1).unwrap()[0].commit.clone();
+    let old_name = lib.read_cv("main").unwrap().cv["basics"]["name"].as_str().unwrap().to_string();
+    let p: json_patch::Patch = serde_json::from_value(json!([{"op":"replace","path":"/basics/name","value":"ZZNewName"}])).unwrap();
+    lib.patch_cv("main", &p, Author::You, None).unwrap();
+    let old = lib.render_cv("main", Some("t1"), Some(&head)).unwrap();
+    assert!(old.contains(&format!("N={old_name}")) && !old.contains("ZZNewName"), "{old}");
+    assert!(lib.render_cv("main", None, None).unwrap().contains("N=ZZNewName"));
+}
+
+#[test]
+fn render_cv_explicit_unknown_theme_errors() {
+    let (_d, lib) = setup("x");
+    assert!(matches!(lib.render_cv("main", Some("nope"), None), Err(CoreError::NotFound(_))));
+}
+
+#[test]
+fn render_cv_bad_meta_theme_attempts_classic_fallback() {
+    let (_d, lib) = setup("x");
+    let p: json_patch::Patch = serde_json::from_value(json!([{"op":"add","path":"/meta","value":{"theme":"My Theme"}}])).unwrap();
+    lib.patch_cv("main", &p, Author::You, None).unwrap();
+    match lib.render_cv("main", None, None) {
+        Err(CoreError::NotFound(m)) => assert!(m.contains("builtin:classic"), "{m}"),
+        o => panic!("{o:?}"),
+    }
+}
+
+#[test]
+fn render_neutralises_style_end_and_uppercase_head() {
+    let (d, lib) = setup("<HTML><HEAD></HEAD><body></body></HTML>");
+    std::fs::write(d.path().join("themes/t1/style.css"), "a{}</STYLE><script>1</script>").unwrap();
+    let out = lib.render(&json!({}), "t1").unwrap();
+    assert!(!out.contains("</STYLE>") && out.contains(r"<\/style"), "{out}");
+    assert!(out.matches("</style>").count() == 1 && out.find("</style>").unwrap() < out.find("</HEAD>").unwrap(), "{out}");
 }
 
 #[test]
