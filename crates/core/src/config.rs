@@ -12,7 +12,7 @@ fn config_file() -> Option<PathBuf> {
     ProjectDirs::from("dev", "jsoncv", "jsoncv-desktop").map(|d| d.config_dir().join("config.json"))
 }
 
-fn default_library() -> PathBuf {
+pub fn default_library() -> PathBuf {
     BaseDirs::new().map(|d| d.home_dir().join("Documents/CVs")).unwrap_or_else(|| PathBuf::from("CVs"))
 }
 

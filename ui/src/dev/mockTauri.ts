@@ -33,13 +33,25 @@ const versions = [
   ver('v7', 'You', 'Create main', 20 * 86_400_000),
 ]
 
+let cfg: Record<string, unknown> = new URLSearchParams(location.search).has('sync')
+  ? { library: '~/Library/Mobile Documents/com~apple~CloudDocs/CVs', inSyncFolder: true }
+  : { library: '~/Documents/CVs', inSyncFolder: false }
+
 mockIPC(
   (cmd, args) => {
     const a = args as Record<string, string>
     switch (cmd) {
       case 'list_cvs': return cvs
       case 'list_themes': return themes
-      case 'get_config': return { library: '~/Documents/CVs', inSyncFolder: false }
+      case 'get_config': return cfg
+      case 'set_library': cfg = { library: a.path, inSyncFolder: /iCloud|Mobile Documents/.test(a.path) }; return cfg
+      case 'theme_report': return a.id === 'my-theme'
+        ? { render_error: null, missing: ['awards', 'work[].highlights', 'basics.location.region'] }
+        : { render_error: null, missing: [] }
+      case 'duplicate_theme': { const t = theme(a.newId, a.newId, false); themes.push(t); return t }
+      case 'export': return `~/Documents/CVs/exports/${a.name.replace('/', '-')}-classic.${a.format}`
+      case 'print_cv': case 'reveal': return null
+      case 'binary_path': return '/Applications/JsonCV.app/Contents/MacOS/jsoncv'
       case 'set_cv_theme': {
         const cv = cvs.find((c) => c.name === a.name)
         if (cv) cv.theme = a.themeId
@@ -52,7 +64,7 @@ mockIPC(
       case 'diff': return '--- a/main.cv.json\n+++ b/main.cv.json\n@@ -2,3 +2,3 @@\n   "basics": {\n-    "name": "Ada Lovelace",\n+    "name": "Ada King",\n     "label": "Mathematician"'
       case 'save_draft': return { commit: 'c1', base: 'h2' }
       case 'add_asset_from_path': return 'assets/photo.png'
-      case 'plugin:dialog|open': return '/tmp/photo.png'
+      case 'plugin:dialog|open': return a?.options && (a.options as unknown as { directory?: boolean }).directory ? '/Users/me/Library/Mobile Documents/CVs' : '/tmp/photo.png'
       default: return null
     }
   },

@@ -4,7 +4,7 @@ import { previewUrl } from '../api.ts'
 const PAPER_W = 794
 const PAPER_H = 1123 // A4 at 96 dpi; fallback when the iframe document is not readable
 
-export function Preview({ cv, commit, reloadKey }: { cv: string; commit?: string; reloadKey: number }) {
+export function Preview({ cv, commit, theme, reloadKey }: { cv: string; commit?: string; theme?: string; reloadKey: number }) {
   const box = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(1)
   const [height, setHeight] = useState(PAPER_H)
@@ -20,10 +20,10 @@ export function Preview({ cv, commit, reloadKey }: { cv: string; commit?: string
     <div className="preview" ref={box}>
       <div className="paper" style={{ width: PAPER_W, height, zoom }}>
         <iframe
-          key={`${cv}|${commit ?? ''}|${reloadKey}`}
+          key={`${cv}|${commit ?? ''}|${theme ?? ''}|${reloadKey}`}
           title="CV preview"
           sandbox="allow-same-origin"
-          src={previewUrl(cv, undefined, commit)}
+          src={previewUrl(cv, theme, commit)}
           onLoad={(e) => {
             // Cross-origin in the real app (throws); readable in the dev mock.
             try {

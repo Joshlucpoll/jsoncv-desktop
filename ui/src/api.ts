@@ -10,7 +10,7 @@ export type ThemeReport = { render_error: { message: string; line: number | null
 export type SchemaError = { path: string; message: string }
 export type ApiError = { kind: string; message: string; errors?: SchemaError[] }
 export type ExportFormat = 'pdf' | 'html' | 'json'
-export type LibraryConfig = { library: string; inSyncFolder: boolean }
+export type LibraryConfig = { library: string; inSyncFolder: boolean; fallbackFrom?: { path: string; message: string } }
 
 /** Dev-only: browser run with `?mock` serves a static page instead of the preview scheme. */
 export const MOCK = import.meta.env.DEV && new URLSearchParams(location.search).has('mock')

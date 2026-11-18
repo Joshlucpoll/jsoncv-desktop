@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
-use crate::app::{lock, preview_url, start_watcher, AppState};
+use crate::app::{lock, preview_url, start_watcher, AppState, Fallback};
 
 #[derive(Debug, Serialize)]
 pub struct ApiError {
@@ -203,10 +203,13 @@ pub async fn add_asset_from_path(state: State<'_, AppState>, path: PathBuf) -> R
 pub struct LibraryConfig {
     library: String,
     in_sync_folder: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fallback_from: Option<Fallback>,
 }
 
-fn library_config(lib: &Library) -> LibraryConfig {
+fn library_config(lib: &Library, fallback_from: Option<Fallback>) -> LibraryConfig {
     LibraryConfig {
+        fallback_from,
         library: lib.root().to_string_lossy().into_owned(),
         in_sync_folder: config::is_in_sync_folder(lib.root()),
     }
@@ -214,7 +217,7 @@ fn library_config(lib: &Library) -> LibraryConfig {
 
 #[tauri::command]
 pub fn get_config(state: State<AppState>) -> LibraryConfig {
-    library_config(&state.lib())
+    library_config(&state.lib(), lock(&state.fallback).clone())
 }
 
 #[tauri::command]
@@ -229,8 +232,9 @@ pub async fn set_library(app: AppHandle, state: State<'_, AppState>, path: PathB
     })
     .await?;
     let watcher = start_watcher(app, lib.clone());
-    let out = library_config(&lib);
+    let out = library_config(&lib, None);
     *lock(&state.lib) = lib;
+    *lock(&state.fallback) = None;
     *lock(&state.watcher) = watcher;
     Ok(out)
 }

@@ -18,8 +18,16 @@ const PREVIEW_CSP: &str =
 const DEBOUNCE: Duration = Duration::from_millis(300);
 const SWEEP_DELAY: Duration = Duration::from_secs(2);
 
+/// The configured library that could not be opened at startup, and why.
+#[derive(Clone, Serialize)]
+pub struct Fallback {
+    pub path: String,
+    pub message: String,
+}
+
 pub struct AppState {
     pub lib: Mutex<Library>,
+    pub fallback: Mutex<Option<Fallback>>,
     pub watcher: Mutex<Option<RecommendedWatcher>>,
 }
 
@@ -35,13 +43,25 @@ impl AppState {
     }
 }
 
+/// Opens `configured`; if that fails, opens `default` and records why. Fails only if `default` fails too.
+pub fn open_with_fallback(configured: &Path, default: &Path) -> Result<(Library, Option<Fallback>), CoreError> {
+    match Library::open(configured) {
+        Ok(lib) => Ok((lib, None)),
+        Err(e) if configured != default => {
+            let lib = Library::open(default)?;
+            Ok((lib, Some(Fallback { path: configured.to_string_lossy().into_owned(), message: e.to_string() })))
+        }
+        Err(e) => Err(e),
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let lib = Library::open(&config::load().library)?;
+            let (lib, fallback) = open_with_fallback(&config::load().library, &config::default_library())?;
             let watcher = start_watcher(app.handle().clone(), lib.clone());
-            app.manage(AppState { lib: Mutex::new(lib), watcher: Mutex::new(watcher) });
+            app.manage(AppState { lib: Mutex::new(lib), fallback: Mutex::new(fallback), watcher: Mutex::new(watcher) });
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol(PREVIEW_SCHEME, |ctx, req, responder| {
@@ -245,6 +265,23 @@ mod tests {
         let bad = render_preview(&lib, "http://jsoncv-preview.localhost/render?cv=tailored%2Fnope");
         assert!(bad.contains("Cannot render") && bad.contains("tailored/nope"), "{bad}");
         assert!(render_preview(&lib, "jsoncv-preview://localhost/render").contains("Missing cv"));
+    }
+
+    #[test]
+    fn falls_back_to_default_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let blocker = dir.path().join("file");
+        std::fs::write(&blocker, "x").unwrap();
+        let bad = blocker.join("lib"); // a path below a regular file cannot be created
+        let good = dir.path().join("default");
+        let (lib, fb) = open_with_fallback(&good, &good).unwrap();
+        assert!(fb.is_none() && lib.root() == good);
+        let (lib, fb) = open_with_fallback(&bad, &good).unwrap();
+        let fb = fb.expect("fallback recorded");
+        assert_eq!(lib.root(), good);
+        assert_eq!(fb.path, bad.to_string_lossy());
+        assert!(!fb.message.is_empty());
+        assert!(open_with_fallback(&bad, &bad).is_err());
     }
 
     #[test]
