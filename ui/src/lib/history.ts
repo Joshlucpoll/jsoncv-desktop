@@ -12,8 +12,18 @@ export function groupVersions(versions: Version[], windowMs = 300_000): VersionG
     if (g && g.author === v.author && gap >= 0 && gap <= windowMs) g.versions.push(v)
     else groups.push({ author: v.author, label: '', newest: v, versions: [v] })
   }
-  for (const g of groups) g.label = g.versions.length === 1 ? `${g.author}: ${g.newest.message}` : `${g.author}: ${g.versions.length} edits`
+  for (const g of groups) g.label = `${g.author}: ${g.versions.length === 1 ? g.newest.message : groupSummary(g.versions)}`
   return groups
+}
+
+// "Edited work, skills" messages merge into one key list (first seen first); anything else falls back to a count.
+function groupSummary(versions: Version[]): string {
+  const keys: string[] = []
+  for (const { message } of versions) {
+    if (!message.startsWith('Edited ')) return `${versions.length} edits`
+    for (const k of message.slice(7).split(', ')) if (!keys.includes(k)) keys.push(k)
+  }
+  return `edited ${keys.join(', ')}`
 }
 
 export function relativeTime(ms: number, now = Date.now(), locale?: string): string {

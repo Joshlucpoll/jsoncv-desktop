@@ -22,6 +22,13 @@ describe('groupVersions', () => {
   it('returns [] for an empty list', () => expect(groupVersions([])).toEqual([]))
   it('merges a gap of exactly windowMs', () => expect(groupVersions([v('You', 5), v('You', 0)])).toHaveLength(1))
   it('does not merge out-of-order (negative gap) versions', () => expect(groupVersions([v('You', 1), v('You', 2)])).toHaveLength(2))
+  it('lists touched sections for a group of Edited versions', () => {
+    const g = groupVersions([v('You', 3, 'Edited work, skills'), v('You', 2, 'Edited basics'), v('You', 1, 'Edited skills')])
+    expect(g[0].label).toBe('You: edited work, skills, basics')
+  })
+  it('falls back to a count when messages are not all Edited', () => {
+    expect(groupVersions([v('You', 2, 'Edited work'), v('You', 1, 'Restored version abc1234')])[0].label).toBe('You: 2 edits')
+  })
   it('labels a single version with its message', () => {
     expect(groupVersions([v('Agent', 1, 'tailor')])[0].label).toBe('Agent: tailor')
   })
