@@ -1,5 +1,5 @@
 // DEV ONLY: lets the UI run in a plain browser at /?mock for screenshots.
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { mockIPC, mockWindows } from '@tauri-apps/api/mocks'
 import schema from '../../../crates/core/schema/jsoncv.schema.json'
 import type { CvInfo, ThemeInfo } from '../api.ts'
 
@@ -51,6 +51,9 @@ mockIPC(
       case 'duplicate_theme': { const t = theme(a.newId, a.newId, false); themes.push(t); return t }
       case 'export': return `~/Documents/CVs/exports/${a.name.replace('/', '-')}-classic.${a.format}`
       case 'print_cv': case 'reveal': return null
+      case 'theme_dir_path': return `~/Documents/CVs/themes/${a.id}`
+      // Close/quit guard: log instead of closing so the flow is visible in the browser console.
+      case 'exit_app': case 'plugin:window|destroy': console.info(`[mock] ${cmd}: app would close`); return null
       case 'binary_path': return '/Applications/JsonCV.app/Contents/MacOS/jsoncv'
       case 'set_cv_theme': {
         const cv = cvs.find((c) => c.name === a.name)
@@ -70,3 +73,4 @@ mockIPC(
   },
   { shouldMockEvents: true },
 )
+mockWindows('main') // getCurrentWindow() needs window metadata

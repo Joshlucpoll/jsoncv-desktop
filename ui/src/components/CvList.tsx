@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { confirm } from '@tauri-apps/plugin-dialog'
 import { type CvInfo, MOCK, createTailored, deleteCv, errorMessage, renameCv } from '../api.ts'
 
-type Props = { cvs: CvInfo[]; selected: string; onSelect: (n: string) => void; onChanged: () => Promise<unknown>; onError: (e: unknown) => void }
+type Props = {
+  cvs: CvInfo[]; selected: string; onSelect: (n: string) => void; onChanged: () => Promise<unknown>; onError: (e: unknown) => void
+  /** Runs the edit panel's leave guard before the selected CV is renamed or deleted; false cancels. */
+  onLeaveSelected: () => Promise<boolean>
+}
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/
 const slugOf = (name: string) => name.replace(/^tailored\//, '')
@@ -34,7 +38,7 @@ function SlugInput({ initial, onSubmit, onCancel }: { initial: string; onSubmit:
   )
 }
 
-export function CvList({ cvs, selected, onSelect, onChanged, onError }: Props) {
+export function CvList({ cvs, selected, onSelect, onChanged, onError, onLeaveSelected }: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number; name: string }>()
   const [creating, setCreating] = useState(false)
   const [renaming, setRenaming] = useState<string>()
@@ -87,6 +91,7 @@ export function CvList({ cvs, selected, onSelect, onChanged, onError }: Props) {
         initial={slugOf(c.name)}
         onCancel={() => setRenaming(undefined)}
         onSubmit={async (s) => {
+          if (selected === c.name && !(await onLeaveSelected())) return setRenaming(undefined)
           const r = await renameCv(c.name, s)
           setRenaming(undefined)
           if (selected === c.name) await select(r.name)
@@ -144,6 +149,7 @@ export function CvList({ cvs, selected, onSelect, onChanged, onError }: Props) {
               const msg = `Delete "${slugOf(name)}"? It stays in the library's Git history.`
               // The dialog plugin replaces window.confirm with an async version, so use its confirm().
               if (!(MOCK ? window.confirm(msg) : await confirm(msg, { title: 'Delete CV', kind: 'warning' }))) return
+              if (selected === name && !(await onLeaveSelected())) return
               try {
                 await deleteCv(name)
                 if (selected === name) onSelect('main')

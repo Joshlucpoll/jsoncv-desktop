@@ -94,14 +94,13 @@ const dark = matchMedia('(prefers-color-scheme: dark)').matches
 type Props = {
   name: string
   onClose(): void
-  onError(message: string): void
   /** The panel registers a check App runs before closing it or switching CV. */
   leaveRef: { current: (() => Promise<boolean>) | null }
   /** Saves any pending draft without leaving; resolves true when nothing unsaved remains. */
   saveRef: { current: (() => Promise<boolean>) | null }
 }
 
-export function EditPanel({ name, onClose, onError, leaveRef, saveRef }: Props) {
+export function EditPanel({ name, onClose, leaveRef, saveRef }: Props) {
   const [schema, setSchema] = useState<RJSFSchema>()
   const [base, setBase] = useState<unknown>()
   const [draft, setDraft] = useState<unknown>()
@@ -177,7 +176,9 @@ export function EditPanel({ name, onClose, onError, leaveRef, saveRef }: Props) 
           diskChanged.current = false
           const [doc, h] = await Promise.all([readCv(name), history(name, 1).catch(() => [])])
           // Saved.base hashes the merged bytes, so compare content, not hashes.
-          if (draftRef.current === sent && !jsonErrRef.current && !same(doc.cv, sent)) applyDisk(doc.cv, doc.base, h[0]?.commit)
+          // A keystroke during the read keeps the refresh owed for the next save.
+          if (draftRef.current !== sent || jsonErrRef.current) diskChanged.current = true
+          else if (!same(doc.cv, sent)) applyDisk(doc.cv, doc.base, h[0]?.commit)
         }
       } catch (e) {
         const err = e as ApiError
@@ -265,7 +266,7 @@ export function EditPanel({ name, onClose, onError, leaveRef, saveRef }: Props) 
       return confirmLeave(`Couldn't save: ${lastError.current ?? 'unknown error'}. Discard your changes?`)
     }
     return () => { leaveRef.current = null; saveRef.current = null }
-  }, [flush, leaveRef, saveRef, onError])
+  }, [flush, leaveRef, saveRef])
 
   const discard = async () => {
     window.clearTimeout(timer.current)

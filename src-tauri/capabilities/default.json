@@ -1,10 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: app commands, library-changed events, folder/file pickers",
+  "description": "Main window: app commands, library-changed events, folder/file pickers, close guard",
   "windows": ["main"],
   "permissions": [
     "core:event:default",
+    "core:window:allow-destroy",
     "dialog:allow-open",
     "dialog:allow-message"
   ]

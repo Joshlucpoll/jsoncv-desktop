@@ -247,6 +247,18 @@ pub async fn reveal(path: PathBuf) -> Res<()> {
     .await
 }
 
+/// The folder of a library theme, built natively so the UI never joins paths itself.
+#[tauri::command]
+pub async fn theme_dir_path(state: State<'_, AppState>, id: String) -> Res<String> {
+    with_lib(&state, move |l| Ok(l.theme_dir(&id)?.to_string_lossy().into_owned())).await
+}
+
+/// Called by the UI once its unsaved-draft guard allows quitting.
+#[tauri::command]
+pub fn exit_app(app: AppHandle) {
+    app.exit(0)
+}
+
 #[tauri::command]
 pub fn binary_path() -> Res<String> {
     Ok(std::env::current_exe()?.to_string_lossy().into_owned())

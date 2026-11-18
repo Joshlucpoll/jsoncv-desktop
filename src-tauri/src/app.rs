@@ -55,8 +55,35 @@ pub fn open_with_fallback(configured: &Path, default: &Path) -> Result<(Library,
     }
 }
 
+/// Event the UI answers by running its unsaved-draft guard, then calling `exit_app`.
+pub const QUIT_REQUESTED: &str = "app-quit-requested";
+
+/// The macOS default menu, with Quit (⌘Q) routed through the UI. The stock Quit item calls
+/// NSApp `terminate:`, which exits without any Tauri event, so unsaved edits could not be saved.
+#[cfg(target_os = "macos")]
+fn guarded_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{Menu, MenuItem};
+    let menu = Menu::default(app)?;
+    if let Some(app_menu) = menu.items()?.first().and_then(|i| i.as_submenu().cloned()) {
+        if let Some(quit) = app_menu.items()?.last() {
+            app_menu.remove(quit)?;
+        }
+        let label = format!("Quit {}", app.package_info().name);
+        app_menu.append(&MenuItem::with_id(app, "quit", label, true, Some("CmdOrCtrl+Q"))?)?;
+    }
+    Ok(menu)
+}
+
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(guarded_menu);
+    builder
+        .on_menu_event(|app, e| {
+            if e.id() == "quit" {
+                let _ = app.emit(QUIT_REQUESTED, ());
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let (lib, fallback) = open_with_fallback(&config::load().library, &config::default_library())?;
@@ -99,6 +126,8 @@ pub fn run() {
             commands::set_library,
             commands::reveal,
             commands::binary_path,
+            commands::theme_dir_path,
+            commands::exit_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

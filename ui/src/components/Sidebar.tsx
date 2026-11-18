@@ -6,7 +6,7 @@ import { ThemeList } from './ThemesView.tsx'
 export type View = 'cvs' | 'themes'
 
 type Props = {
-  cvs: CvInfo[]; selected: string; onSelect: (n: string) => void; onChanged: () => Promise<unknown>; onError: (e: unknown) => void
+  cvs: CvInfo[]; selected: string; onSelect: (n: string) => void; onChanged: () => Promise<unknown>; onLeaveSelected: () => Promise<boolean>; onError: (e: unknown) => void
   reloadKey: number; viewing?: string; onView: (v?: Version) => void
   view: View; onViewMode: (v: View) => void
   themes: ThemeInfo[]; theme?: string; onTheme: (id: string) => void; onSettings: () => void

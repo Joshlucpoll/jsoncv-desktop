@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ask, open } from '@tauri-apps/plugin-dialog'
-import { MOCK, type ApiError, type CvInfo, type ExportFormat, type LibraryConfig, type ThemeInfo, type Version, binaryPath, errorMessage, exportCv, getConfig, listCvs, listThemes, onLibraryChanged, printCv, reveal, setCvTheme, setLibrary } from './api.ts'
+import { MOCK, type ApiError, type CvInfo, type ExportFormat, type LibraryConfig, type ThemeInfo, type Version, binaryPath, errorMessage, exitApp, exportCv, getConfig, listCvs, listThemes, onCloseRequested, onLibraryChanged, onQuitRequested, printCv, reveal, setCvTheme, setLibrary } from './api.ts'
 import { revealLabel } from './lib/platform.ts'
 import { Settings } from './components/Settings.tsx'
 import { ThemeDetail } from './components/ThemesView.tsx'
@@ -52,6 +52,23 @@ export default function App() {
     })
     return () => void un.then((f) => f())
   }, [reloadCvs, reloadThemes, fail])
+
+  // Closing the window or quitting runs the same guard as switching CV (no-op when nothing is open or unsaved).
+  useEffect(() => {
+    const unClose = onCloseRequested(async (e) => {
+      if (leaveRef.current && !(await leaveRef.current())) e.preventDefault()
+    })
+    const unQuit = onQuitRequested(() => void guarded(() => void exitApp()))
+    return () => { void unClose.then((f) => f()); void unQuit.then((f) => f()) }
+  }, [guarded])
+  // Renaming or deleting the open CV: let the edit panel save (or ask) first, then close it.
+  const leaveSelected = useCallback(async () => {
+    if (leaveRef.current && !(await leaveRef.current())) return false
+    // The panel agreed to leave; drop its guard now so the follow-up select does not ask again before unmount.
+    leaveRef.current = saveRef.current = null
+    setEditing(false)
+    return true
+  }, [])
 
   useEffect(() => {
     if (!exported) return
@@ -114,7 +131,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => { setViewing(undefined); setExported(undefined); setNeedsBrowser(false); setSelected(n) }))} onChanged={reloadCvs} onError={fail} reloadKey={reloadKey} viewing={viewing?.commit} onView={(v) => void viewVersion(v)} view={view} onViewMode={setView} themes={themes} theme={themeInfo?.id} onTheme={setThemeSel} onSettings={() => setSettingsOpen(true)} />
+      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => { setViewing(undefined); setExported(undefined); setNeedsBrowser(false); setSelected(n) }))} onChanged={reloadCvs} onLeaveSelected={leaveSelected} onError={fail} reloadKey={reloadKey} viewing={viewing?.commit} onView={(v) => void viewVersion(v)} view={view} onViewMode={setView} themes={themes} theme={themeInfo?.id} onTheme={setThemeSel} onSettings={() => setSettingsOpen(true)} />
       <main className="main">
         <Toolbar
           name={current}
@@ -169,7 +186,7 @@ export default function App() {
         {themesView && (
           <ThemeDetail
             key={themeInfo.id}
-            theme={themeInfo} library={config?.library ?? ''} reloadKey={reloadKey} cvName={current}
+            theme={themeInfo} reloadKey={reloadKey} cvName={current}
             useDisabled={!!viewing} onUse={() => setCvTheme(current, themeInfo.id).then(reloadCvs, fail)}
             onDuplicated={(t) => { void reloadThemes(); setThemeSel(t.id) }}
             onError={fail}
@@ -177,7 +194,7 @@ export default function App() {
         )}
         <div className="workspace">
           <Preview cv={current} commit={viewing?.commit} theme={themesView ? themeInfo.id : undefined} reloadKey={reloadKey} />
-          {editing && <EditPanel key={current} name={current} leaveRef={leaveRef} saveRef={saveRef} onError={fail} onClose={() => void guarded(() => setEditing(false))} />}
+          {editing && <EditPanel key={current} name={current} leaveRef={leaveRef} saveRef={saveRef} onClose={() => void guarded(() => setEditing(false))} />}
         </div>
       </main>
       {settingsOpen && <Settings config={config} binary={binary} onChange={changeLibrary} onClose={() => setSettingsOpen(false)} />}

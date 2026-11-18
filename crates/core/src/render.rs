@@ -122,7 +122,8 @@ fn nf(name: &str) -> impl Fn(std::io::Error) -> CoreError + '_ {
 }
 
 impl Library {
-    fn theme_dir(&self, id: &str) -> Result<PathBuf, CoreError> {
+    /// The folder of library theme `id` (built-ins have none: their ids fail the check).
+    pub fn theme_dir(&self, id: &str) -> Result<PathBuf, CoreError> {
         if !valid_theme_id(id) {
             return Err(CoreError::BadName(id.to_string()));
         }

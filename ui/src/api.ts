@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { type CloseRequestedEvent, getCurrentWindow } from '@tauri-apps/api/window'
 
 export type CvInfo = { name: string; theme: string | null; tailored_from: string | null; modified_ms: number; error: string | null }
 export type CvDoc = { name: string; cv: unknown; base: string }
@@ -40,10 +41,16 @@ export const getConfig = () => invoke<LibraryConfig>('get_config')
 export const setLibrary = (path: string) => invoke<LibraryConfig>('set_library', { path })
 export const reveal = (path: string) => invoke<void>('reveal', { path })
 export const binaryPath = () => invoke<string>('binary_path')
+export const themeDirPath = (id: string) => invoke<string>('theme_dir_path', { id })
+export const exitApp = () => invoke<void>('exit_app')
 
 /** Returns the unlisten function. */
 export const onLibraryChanged = async (cb: (paths: string[]) => void) =>
   listen<{ paths: string[] }>('library-changed', (e) => cb(e.payload.paths))
+/** ⌘Q on macOS (the app menu's Quit). Returns the unlisten function. */
+export const onQuitRequested = (cb: () => void) => listen('app-quit-requested', cb)
+/** Window close; the window is destroyed after `cb` unless it calls preventDefault. */
+export const onCloseRequested = (cb: (e: CloseRequestedEvent) => Promise<void>) => getCurrentWindow().onCloseRequested(cb)
 
 export function previewUrl(cv: string, theme?: string, commit?: string): string {
   if (MOCK) return '/dev-preview.html'
