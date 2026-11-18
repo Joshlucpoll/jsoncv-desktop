@@ -196,12 +196,16 @@ impl Library {
 
     pub fn duplicate_theme(&self, id: &str, new_id: &str, author: Author) -> Result<ThemeInfo, CoreError> {
         let src = self.get_theme(id)?;
+        if new_id.starts_with("builtin:") {
+            return Err(CoreError::BadName(new_id.to_string()));
+        }
         let dir = self.theme_dir(new_id)?;
         with_lock(self.root(), || {
             self.sweep_external()?;
             if dir.exists() {
                 return Err(CoreError::BadName(format!("Theme {new_id} already exists")));
             }
+            let res = (|| {
             std::fs::create_dir_all(&dir)?;
             let meta = ThemeMeta { name: format!("{} copy", src.info.meta.name), ..src.info.meta.clone() };
             write_atomic(&dir.join("template.html.j2"), src.template.as_bytes())?;
@@ -215,6 +219,11 @@ impl Library {
             let paths: Vec<&Path> = rels.iter().map(Path::new).collect();
             commit(self.root(), &paths, author, &format!("Duplicated theme {id} as {new_id}"))?;
             Ok(())
+            })();
+            if res.is_err() {
+                let _ = std::fs::remove_dir_all(&dir); // don't leave a half-copied theme behind
+            }
+            res
         })?;
         Ok(self.get_theme(new_id)?.info)
     }

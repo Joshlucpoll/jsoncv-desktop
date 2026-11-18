@@ -35,7 +35,12 @@ fn probe_node(schema: &Json, root: &Json) -> Json {
         Some("number" | "integer") => 1.into(),
         Some("array") => Json::Array(vec![probe_node(&schema["items"], root)]),
         Some("object") => Json::Object(
-            schema["properties"].as_object().into_iter().flatten().map(|(k, v)| (k.clone(), probe_node(v, root))).collect(),
+            schema["properties"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .map(|(k, v)| (k.clone(), probe_node(v, root)))
+                .collect(),
         ),
         _ => match schema["format"].as_str() {
             Some("email") => "a@b.co".into(),
@@ -46,9 +51,12 @@ fn probe_node(schema: &Json, root: &Json) -> Json {
     }
 }
 
+/// Every array holds exactly one item, so templates branching on `length > 1` or `loop.last` may behave differently on real CVs.
 /// A CV with one value for every property in the schema, except `$schema` and `meta`.
 pub(crate) fn probe_cv(schema: &Json) -> Json {
-    let Json::Object(mut o) = probe_node(schema, schema) else { return Json::Null };
+    let Json::Object(mut o) = probe_node(schema, schema) else {
+        return Json::Null;
+    };
     o.shift_remove("$schema");
     o.shift_remove("meta");
     Json::Object(o)
@@ -63,7 +71,11 @@ struct Tracked {
 
 fn wrap(node: &Json, path: String, rec: &Rec) -> Value {
     match node {
-        Json::Object(_) | Json::Array(_) => Value::from_object(Tracked { node: node.clone(), path, rec: rec.clone() }),
+        Json::Object(_) | Json::Array(_) => Value::from_object(Tracked {
+            node: node.clone(),
+            path,
+            rec: rec.clone(),
+        }),
         leaf => Value::from(minijinja::value::Serde(leaf)),
     }
 }
@@ -76,7 +88,11 @@ impl Tracked {
 
 impl Object for Tracked {
     fn repr(self: &Arc<Self>) -> ObjectRepr {
-        if self.node.is_array() { ObjectRepr::Seq } else { ObjectRepr::Map }
+        if self.node.is_array() {
+            ObjectRepr::Seq
+        } else {
+            ObjectRepr::Map
+        }
     }
 
     fn get_value(self: &Arc<Self>, key: &Value) -> Option<Value> {
@@ -84,7 +100,11 @@ impl Object for Tracked {
             Json::Object(o) => {
                 let k = key.as_str()?;
                 let child = o.get(k)?;
-                let path = if self.path.is_empty() { k.to_string() } else { format!("{}.{k}", self.path) };
+                let path = if self.path.is_empty() {
+                    k.to_string()
+                } else {
+                    format!("{}.{k}", self.path)
+                };
                 self.record(&path);
                 Some(wrap(child, path, &self.rec))
             }
@@ -100,7 +120,12 @@ impl Object for Tracked {
 
     fn enumerate(self: &Arc<Self>) -> Enumerator {
         match &self.node {
-            Json::Object(o) => Enumerator::Iter(Box::new(o.keys().map(|k| Value::from(k.as_str())).collect::<Vec<_>>().into_iter())),
+            Json::Object(o) => Enumerator::Iter(Box::new(
+                o.keys()
+                    .map(|k| Value::from(k.as_str()))
+                    .collect::<Vec<_>>()
+                    .into_iter(),
+            )),
             Json::Array(a) => Enumerator::Seq(a.len()),
             _ => Enumerator::Empty,
         }
@@ -111,7 +136,15 @@ fn leaves(node: &Json, path: &str, out: &mut Vec<String>) {
     match node {
         Json::Object(o) => {
             for (k, v) in o {
-                leaves(v, &if path.is_empty() { k.clone() } else { format!("{path}.{k}") }, out);
+                leaves(
+                    v,
+                    &if path.is_empty() {
+                        k.clone()
+                    } else {
+                        format!("{path}.{k}")
+                    },
+                    out,
+                );
             }
         }
         Json::Array(a) if a.iter().any(|v| v.is_object() || v.is_array()) => {
@@ -128,7 +161,9 @@ pub fn missing_fields(template: &str) -> Result<Vec<String>, CoreError> {
     let probe = probe_cv(&schema);
     let rec: Rec = Default::default();
     let cv = wrap(&probe, String::new(), &rec);
-    environment().render_str(template, minijinja::context! { cv => cv }).map_err(render_error)?;
+    environment()
+        .render_str(template, minijinja::context! { cv => cv })
+        .map_err(render_error)?;
     let read = rec.lock().unwrap();
     let mut all = vec![];
     leaves(&probe, "", &mut all);
@@ -151,7 +186,11 @@ mod tests {
     fn probe_is_valid() {
         let schema: serde_json::Value = serde_json::from_str(super::SCHEMA).unwrap();
         let probe = super::probe_cv(&schema);
-        assert!(crate::schema::validate(&probe).is_ok(), "{:?}", crate::schema::validate(&probe));
+        assert!(
+            crate::schema::validate(&probe).is_ok(),
+            "{:?}",
+            crate::schema::validate(&probe)
+        );
         assert!(probe.get("meta").is_none() && probe.get("$schema").is_none());
     }
 }

@@ -10,7 +10,11 @@ fn lib() -> (tempfile::TempDir, Library) {
 }
 
 fn meta(name: &str) -> ThemeMeta {
-    ThemeMeta { name: name.into(), description: "d".into(), page: PageMeta { size: PageSize::A4 } }
+    ThemeMeta {
+        name: name.into(),
+        description: "d".into(),
+        page: PageMeta { size: PageSize::A4 },
+    }
 }
 
 #[test]
@@ -41,24 +45,68 @@ fn constructs_work_on_tracked_values() {
              {% for h in cv.work[0].highlights %}{{ h | markdown }}{% endfor %}{{ cv.skills[0].keywords | join(', ') }}\
              {% for p in cv.basics.profiles %}{{ p.url | strip_scheme }}{% endfor %}{{ cv.basics.summary | markdown }}";
     let m = missing_fields(t).unwrap();
-    for read in ["work[].highlights", "skills[].keywords", "basics.profiles[].url", "basics.summary"] {
+    for read in [
+        "work[].highlights",
+        "skills[].keywords",
+        "basics.profiles[].url",
+        "basics.summary",
+    ] {
         assert!(!m.contains(&read.to_string()), "{read} in {m:?}");
     }
 }
 
 #[test]
 fn broken_template_is_render_error() {
-    assert!(matches!(missing_fields("{{ cv.basics.name "), Err(CoreError::Render(_))));
+    assert!(matches!(
+        missing_fields("{{ cv.basics.name "),
+        Err(CoreError::Render(_))
+    ));
 }
 
 #[test]
-fn builtin_reports_are_small() {
+fn builtin_reports_only_isdetailed_missing() {
     let (_d, lib) = lib();
     for id in ["builtin:classic", "builtin:two-column"] {
         let r = lib.theme_report(id).unwrap();
         assert!(r.render_error.is_none(), "{id}: {:?}", r.render_error);
+        assert_eq!(r.missing, vec!["skills[].isDetailed".to_string()], "{id}");
         println!("{id} missing: {:?}", r.missing);
     }
+}
+
+#[test]
+fn tracking_edge_constructs() {
+    let m = missing_fields("{% if cv.awards %}x{% endif %}").unwrap();
+    assert!(m.contains(&"awards (whole section)".to_string()), "{m:?}");
+    for (t, read) in [
+        ("{{ (cv.work | first).position }}", "work[].position"),
+        (
+            r#"{{ cv.skills | map(attribute="name") | join(", ") }}"#,
+            "skills[].name",
+        ),
+        (
+            r#"{% for w in cv.work | selectattr("position") %}{{ w.position }}{% endfor %}"#,
+            "work[].position",
+        ),
+    ] {
+        let m = missing_fields(t).unwrap_or_else(|e| panic!("{t}: {e}"));
+        assert!(!m.contains(&read.to_string()), "{t}: {read} in {m:?}");
+    }
+    for t in [
+        "{% for k, v in cv.basics|items %}{{ v }}{% endfor %}",
+        "{{ cv.basics }}",
+    ] {
+        missing_fields(t).unwrap_or_else(|e| panic!("{t}: {e}"));
+    }
+}
+
+#[test]
+fn duplicate_rejects_builtin_prefix_target() {
+    let (_d, lib) = lib();
+    assert!(matches!(
+        lib.duplicate_theme("builtin:classic", "builtin:x", Author::You),
+        Err(CoreError::BadName(_))
+    ));
 }
 
 #[test]
@@ -71,19 +119,42 @@ fn save_builtin_refused() {
 #[test]
 fn save_theme_bad_id() {
     let (_d, lib) = lib();
-    assert!(matches!(lib.save_theme("Bad Id", "x", "y", &meta("n"), Author::You), Err(CoreError::BadName(_))));
+    assert!(matches!(
+        lib.save_theme("Bad Id", "x", "y", &meta("n"), Author::You),
+        Err(CoreError::BadName(_))
+    ));
 }
 
 #[test]
 fn save_theme_with_broken_template_still_saves() {
     let (d, lib) = lib();
-    let r = lib.save_theme("mine", "{{ cv.basics.name ", "body{}", &meta("Mine"), Author::Agent).unwrap();
+    let r = lib
+        .save_theme(
+            "mine",
+            "{{ cv.basics.name ",
+            "body{}",
+            &meta("Mine"),
+            Author::Agent,
+        )
+        .unwrap();
     assert!(r.render_error.is_some() && r.missing.is_empty());
     for f in ["template.html.j2", "style.css", "theme.json"] {
         assert!(d.path().join("themes/mine").join(f).exists(), "{f}");
     }
-    assert!(std::fs::read_to_string(d.path().join("themes/mine/theme.json")).unwrap().ends_with("}\n"));
-    let msg = git2::Repository::open(d.path()).unwrap().head().unwrap().peel_to_commit().unwrap().message().unwrap().to_string();
+    assert!(
+        std::fs::read_to_string(d.path().join("themes/mine/theme.json"))
+            .unwrap()
+            .ends_with("}\n")
+    );
+    let msg = git2::Repository::open(d.path())
+        .unwrap()
+        .head()
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .message()
+        .unwrap()
+        .to_string();
     assert_eq!(msg, "Saved theme mine");
     assert!(lib.theme_report("mine").unwrap().render_error.is_some());
 }
@@ -91,24 +162,44 @@ fn save_theme_with_broken_template_still_saves() {
 #[test]
 fn save_theme_good_template_reports_missing() {
     let (_d, lib) = lib();
-    let r = lib.save_theme("ok", "{{ cv.basics.name }}", "", &meta("Ok"), Author::You).unwrap();
+    let r = lib
+        .save_theme("ok", "{{ cv.basics.name }}", "", &meta("Ok"), Author::You)
+        .unwrap();
     assert!(r.render_error.is_none() && r.missing.contains(&"awards (whole section)".to_string()));
-    assert_eq!(lib.get_theme("ok").unwrap().template, "{{ cv.basics.name }}");
+    assert_eq!(
+        lib.get_theme("ok").unwrap().template,
+        "{{ cv.basics.name }}"
+    );
 }
 
 #[test]
 fn duplicate_theme_copies_builtin_and_assets() {
     let (d, lib) = lib();
-    let info = lib.duplicate_theme("builtin:classic", "my-classic", Author::You).unwrap();
+    let info = lib
+        .duplicate_theme("builtin:classic", "my-classic", Author::You)
+        .unwrap();
     assert_eq!(info.meta.name, "Classic copy");
     assert!(!info.builtin);
-    assert!(matches!(lib.duplicate_theme("builtin:classic", "my-classic", Author::You), Err(CoreError::BadName(m)) if m == "Theme my-classic already exists"));
+    assert!(
+        matches!(lib.duplicate_theme("builtin:classic", "my-classic", Author::You), Err(CoreError::BadName(m)) if m == "Theme my-classic already exists")
+    );
     std::fs::create_dir_all(d.path().join("themes/my-classic/assets")).unwrap();
     std::fs::write(d.path().join("themes/my-classic/assets/f.txt"), "hi").unwrap();
-    lib.duplicate_theme("my-classic", "again", Author::You).unwrap();
-    assert_eq!(std::fs::read_to_string(d.path().join("themes/again/assets/f.txt")).unwrap(), "hi");
+    lib.duplicate_theme("my-classic", "again", Author::You)
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(d.path().join("themes/again/assets/f.txt")).unwrap(),
+        "hi"
+    );
     let repo = git2::Repository::open(d.path()).unwrap();
     let head = repo.head().unwrap().peel_to_commit().unwrap();
-    assert_eq!(head.message().unwrap(), "Duplicated theme my-classic as again");
-    assert!(head.tree().unwrap().get_path(std::path::Path::new("themes/again/assets/f.txt")).is_ok());
+    assert_eq!(
+        head.message().unwrap(),
+        "Duplicated theme my-classic as again"
+    );
+    assert!(head
+        .tree()
+        .unwrap()
+        .get_path(std::path::Path::new("themes/again/assets/f.txt"))
+        .is_ok());
 }
