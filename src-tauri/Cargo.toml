@@ -1,0 +1,28 @@
+[package]
+name = "jsoncv-desktop"
+version = "0.1.0"
+description = "jsoncv desktop app and MCP server"
+edition = "2021"
+
+[[bin]]
+name = "jsoncv-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+jsoncv_core = { path = "../crates/core" }
+jsoncv_mcp = { path = "../crates/mcp" }
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+notify = "8"
+anyhow = "1"
+
+[dev-dependencies]
+git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
+tempfile = "3"
