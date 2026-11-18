@@ -129,3 +129,17 @@ fn open_keeps_gitignore_bytes_as_prefix() {
     let s = String::from_utf8_lossy(&gi);
     assert!(s.lines().any(|l| l == ".*.tmp-*"));
 }
+
+#[test]
+fn open_configured_refuses_missing_non_default() {
+    let d = TempDir::new().unwrap();
+    let default = d.path().join("default");
+    let gone = d.path().join("unplugged-drive/CVs");
+    assert!(matches!(Library::open_configured(&gone, &default), Err(CoreError::NotFound(_))));
+    assert!(!gone.exists());
+    // The default is created on first run; an existing configured folder opens.
+    assert_eq!(Library::open_configured(&default, &default).unwrap().root(), default);
+    let other = d.path().join("other");
+    std::fs::create_dir(&other).unwrap();
+    assert_eq!(Library::open_configured(&other, &default).unwrap().root(), other);
+}

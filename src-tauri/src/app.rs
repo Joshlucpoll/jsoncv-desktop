@@ -45,7 +45,7 @@ impl AppState {
 
 /// Opens `configured`; if that fails, opens `default` and records why. Fails only if `default` fails too.
 pub fn open_with_fallback(configured: &Path, default: &Path) -> Result<(Library, Option<Fallback>), CoreError> {
-    match Library::open(configured) {
+    match Library::open_configured(configured, default) {
         Ok(lib) => Ok((lib, None)),
         Err(e) if configured != default => {
             let lib = Library::open(default)?;
@@ -282,6 +282,9 @@ mod tests {
         assert_eq!(fb.path, bad.to_string_lossy());
         assert!(!fb.message.is_empty());
         assert!(open_with_fallback(&bad, &bad).is_err());
+        let gone = dir.path().join("gone");
+        let (_, fb) = open_with_fallback(&gone, &good).unwrap();
+        assert!(fb.is_some() && !gone.exists());
     }
 
     #[test]

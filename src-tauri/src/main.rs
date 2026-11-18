@@ -22,11 +22,10 @@ fn main() {
 }
 
 fn run_mcp(args: &[String]) -> anyhow::Result<()> {
-    let dir = match args {
-        [] => config::load().library,
-        [flag, dir] if flag == "--dir" => PathBuf::from(dir),
+    let lib = match args {
+        [] => Library::open_configured(&config::load().library, &config::default_library())?,
+        [flag, dir] if flag == "--dir" => Library::open(&PathBuf::from(dir))?,
         _ => anyhow::bail!("usage: jsoncv-desktop mcp [--dir <path>]"),
     };
-    let lib = Library::open(&dir)?;
     tokio::runtime::Runtime::new()?.block_on(jsoncv_mcp::serve_stdio(lib))
 }

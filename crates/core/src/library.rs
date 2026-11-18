@@ -92,6 +92,15 @@ impl Library {
         Ok(lib)
     }
 
+    /// Startup open of the configured library. A missing non-default folder (an unplugged drive,
+    /// a moved folder) is an error rather than silently recreated empty.
+    pub fn open_configured(configured: &Path, default: &Path) -> Result<Library, CoreError> {
+        if configured != default && !configured.exists() {
+            return Err(CoreError::NotFound(format!("library folder {}", configured.display())));
+        }
+        Library::open(configured)
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }
