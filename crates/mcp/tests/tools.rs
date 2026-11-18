@@ -19,7 +19,7 @@ async fn update_cv_invalid_returns_field_errors() {
     let r = s
         .update_cv(Parameters(UpdateCvArgs {
             name: "main".into(),
-            patch: vec![json!({"op":"replace","path":"/work/0/startDate","value":"not a date"})],
+            patch: vec![serde_json::from_value(json!({"op":"replace","path":"/work/0/startDate","value":"not a date"})).unwrap()],
             message: None,
         }))
         .await;
@@ -58,7 +58,7 @@ async fn save_theme_returns_report() {
             id: "mine".into(),
             template: "<h1>{{ cv.basics.name }}</h1>".into(),
             css: "h1{}".into(),
-            meta: json!({"name":"Mine","description":"d","page":{"size":"A4"}}),
+            meta: serde_json::from_value(json!({"name":"Mine","description":"d","page":{"size":"A4"}})).unwrap(),
         }))
         .await;
     assert_eq!(r.is_error, Some(false), "{}", text(&r));
@@ -89,4 +89,34 @@ fn tools_list_has_14_tools_with_exact_names() {
     ];
     want.sort();
     assert_eq!(names, want);
+}
+
+fn schema_of(name: &str) -> Value {
+    let t = JsoncvServer::tool_router().list_all().into_iter().find(|t| t.name == name).unwrap();
+    serde_json::to_value(&*t.input_schema).unwrap()
+}
+
+#[test]
+fn input_schemas_are_typed() {
+    let s = schema_of("export_cv").to_string();
+    for f in ["\"pdf\"", "\"html\"", "\"json\""] {
+        assert!(s.contains(f), "{s}");
+    }
+    let p = schema_of("update_cv");
+    assert!(p["$defs"]["PatchOp"]["properties"]["op"].is_object(), "{p}");
+}
+
+#[test]
+fn resources_have_uri_mime_and_text() {
+    for (uri, mime) in [
+        ("jsoncv://schema", "application/json"),
+        ("jsoncv://theme-guide", "text/markdown"),
+        ("jsoncv://sample-cv", "application/json"),
+    ] {
+        let v = serde_json::to_value(resource_contents(uri).unwrap()).unwrap();
+        assert_eq!(v["uri"], uri);
+        assert_eq!(v["mimeType"], mime);
+        assert!(!v["text"].as_str().unwrap().is_empty());
+    }
+    assert!(resource_contents("jsoncv://nope").is_none());
 }

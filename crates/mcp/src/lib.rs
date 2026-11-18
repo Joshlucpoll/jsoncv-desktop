@@ -3,7 +3,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use jsoncv_core::{
     export::{html_to_png, ExportFormat},
     library::Library,
-    render::ThemeMeta,
+    render::{PageMeta, PageSize, ThemeMeta},
     schema::SCHEMA, Author, CoreError, SAMPLE_CV, THEME_GUIDE,
 };
 use rmcp::{
@@ -30,6 +30,52 @@ const RESOURCES: [(&str, &str, &str, &str); 3] = [
     ("jsoncv://sample-cv", "sample-cv", "application/json", SAMPLE_CV),
 ];
 
+/// One RFC 6902 operation.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct PatchOp {
+    pub op: PatchOpKind,
+    /// JSON pointer of the target, for example `/work/0/summary`.
+    pub path: String,
+    /// Source pointer, for `move` and `copy`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    /// New value, for `add`, `replace` and `test`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<Value>,
+}
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum PatchOpKind {
+    Add,
+    Remove,
+    Replace,
+    Move,
+    Copy,
+    Test,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ThemeMetaInput {
+    pub name: String,
+    pub description: String,
+    pub page: PageInput,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct PageInput {
+    pub size: PageSizeInput,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+pub enum PageSizeInput {
+    A4,
+    Letter,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ExportFormatInput {
+    Pdf,
+    Html,
+    Json,
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct NameArgs {
     /// CV name: `main` or `tailored/<slug>`.
@@ -40,7 +86,7 @@ pub struct UpdateCvArgs {
     /// CV name: `main` or `tailored/<slug>`.
     pub name: String,
     /// RFC 6902 JSON Patch: an array of ops such as `{"op":"replace","path":"/basics/name","value":"A"}`. Paths are JSON pointers into the CV.
-    pub patch: Vec<Value>,
+    pub patch: Vec<PatchOp>,
     /// Optional history message for this change.
     pub message: Option<String>,
 }
@@ -90,7 +136,7 @@ pub struct SaveThemeArgs {
     /// Theme CSS.
     pub css: String,
     /// Theme metadata: `{"name": "...", "description": "...", "page": {"size": "A4" | "Letter"}}`.
-    pub meta: Value,
+    pub meta: ThemeMetaInput,
 }
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SetThemeArgs {
@@ -110,8 +156,7 @@ pub struct PreviewArgs {
 pub struct ExportArgs {
     /// CV name: `main` or `tailored/<slug>`.
     pub name: String,
-    /// One of `pdf`, `html`, `json`.
-    pub format: String,
+    pub format: ExportFormatInput,
     /// Theme id. Defaults to the CV's own theme.
     pub theme: Option<String>,
 }
@@ -159,7 +204,6 @@ impl JsoncvServer {
 
 #[tool_router(vis = "pub")]
 impl JsoncvServer {
-    /// List all CVs in the library with theme, modified time and any error.
     #[tool(description = "List all CVs in the library (name, theme, tailored_from, modified_ms, error).")]
     pub async fn list_cvs(&self) -> CallToolResult {
         done(self.lib.list_cvs())
@@ -172,7 +216,7 @@ impl JsoncvServer {
 
     #[tool(description = "Edit a CV with an RFC 6902 JSON Patch. The result is validated against the schema; invalid results are rejected with per-field errors.")]
     pub async fn update_cv(&self, Parameters(a): Parameters<UpdateCvArgs>) -> CallToolResult {
-        let patch: json_patch::Patch = match serde_json::from_value(Value::Array(a.patch)) {
+        let patch: json_patch::Patch = match serde_json::to_value(&a.patch).and_then(serde_json::from_value) {
             Ok(p) => p,
             Err(e) => return text_err(format!("bad patch: {e}")),
         };
@@ -211,9 +255,15 @@ impl JsoncvServer {
 
     #[tool(description = "Create or update a custom theme. Returns {render_error, missing}: fix every render_error and consider every missing schema field. Built-in themes are read-only.")]
     pub async fn save_theme(&self, Parameters(a): Parameters<SaveThemeArgs>) -> CallToolResult {
-        let meta: ThemeMeta = match serde_json::from_value(a.meta) {
-            Ok(m) => m,
-            Err(e) => return text_err(format!("bad meta: {e}")),
+        let meta = ThemeMeta {
+            name: a.meta.name,
+            description: a.meta.description,
+            page: PageMeta {
+                size: match a.meta.page.size {
+                    PageSizeInput::A4 => PageSize::A4,
+                    PageSizeInput::Letter => PageSize::Letter,
+                },
+            },
         };
         done(self.lib.save_theme(&a.id, &a.template, &a.css, &meta, Author::Agent))
     }
@@ -239,9 +289,10 @@ impl JsoncvServer {
 
     #[tool(description = "Export a CV to the library's exports folder. format: pdf, html or json. Returns {path}.")]
     pub async fn export_cv(&self, Parameters(a): Parameters<ExportArgs>) -> CallToolResult {
-        let format: ExportFormat = match serde_json::from_value(Value::String(a.format.clone())) {
-            Ok(f) => f,
-            Err(_) => return text_err(format!("bad format: {} (use pdf, html or json)", a.format)),
+        let format = match a.format {
+            ExportFormatInput::Pdf => ExportFormat::Pdf,
+            ExportFormatInput::Html => ExportFormat::Html,
+            ExportFormatInput::Json => ExportFormat::Json,
         };
         done(
             self.lib
@@ -254,10 +305,17 @@ impl JsoncvServer {
     #[tool(description = "Add an image or file to the library's assets folder. Give exactly one of `path` (read from disk) or `base64`. Returns {path} to use in the CV, for example basics.image.")]
     pub async fn add_asset(&self, Parameters(a): Parameters<AddAssetArgs>) -> CallToolResult {
         let bytes = match (&a.path, &a.base64) {
-            (Some(p), None) => match std::fs::read(p) {
-                Ok(b) => b,
-                Err(e) => return text_err(format!("cannot read {p}: {e}")),
-            },
+            (Some(p), None) => {
+                match std::fs::metadata(p) {
+                    Ok(m) if m.len() > 20 * 1024 * 1024 => return text_err("bad path: Asset too large (max 20 MB)".into()),
+                    Err(e) => return text_err(format!("cannot read {p}: {e}")),
+                    _ => {}
+                }
+                match std::fs::read(p) {
+                    Ok(b) => b,
+                    Err(e) => return text_err(format!("cannot read {p}: {e}")),
+                }
+            }
             (None, Some(b)) => match STANDARD.decode(b) {
                 Ok(b) => b,
                 Err(e) => return text_err(format!("bad base64: {e}")),
@@ -293,17 +351,20 @@ impl ServerHandler for JsoncvServer {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
-        let Some((uri, _, mime, body)) = RESOURCES.iter().find(|r| r.0 == request.uri) else {
-            return Err(ErrorData::resource_not_found(format!("unknown resource {}", request.uri), None));
-        };
-        let contents = ResourceContents::TextResourceContents {
-            uri: uri.to_string(),
-            mime_type: Some(mime.to_string()),
-            text: body.to_string(),
-            meta: None,
-        };
+        let contents = resource_contents(&request.uri)
+            .ok_or_else(|| ErrorData::resource_not_found(format!("unknown resource {}", request.uri), None))?;
         Ok(ReadResourceResult::new(vec![contents]).into())
     }
+}
+
+pub fn resource_contents(uri: &str) -> Option<ResourceContents> {
+    let (uri, _, mime, body) = RESOURCES.iter().find(|r| r.0 == uri)?;
+    Some(ResourceContents::TextResourceContents {
+        uri: uri.to_string(),
+        mime_type: Some(mime.to_string()),
+        text: body.to_string(),
+        meta: None,
+    })
 }
 
 pub async fn serve_stdio(lib: Library) -> anyhow::Result<()> {
