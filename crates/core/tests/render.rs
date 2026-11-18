@@ -45,8 +45,9 @@ fn themes_list_get_and_ids() {
     let (d, lib) = setup("x");
     std::fs::create_dir_all(d.path().join("themes/empty")).unwrap();
     let l = lib.list_themes().unwrap();
-    assert_eq!(l.len(), 1);
-    assert_eq!((l[0].id.as_str(), l[0].builtin), ("t1", false));
+    assert_eq!(l.len(), 3);
+    assert!(l[..2].iter().all(|t| t.builtin));
+    assert_eq!((l[2].id.as_str(), l[2].builtin), ("t1", false));
     assert!(matches!(lib.get_theme("../x"), Err(CoreError::BadName(_))));
     assert!(matches!(lib.get_theme("builtin:nope"), Err(CoreError::NotFound(_))));
     assert!(matches!(lib.get_theme("empty"), Err(CoreError::NotFound(_))));
@@ -77,10 +78,17 @@ fn render_cv_bad_meta_theme_attempts_classic_fallback() {
     let (_d, lib) = setup("x");
     let p: json_patch::Patch = serde_json::from_value(json!([{"op":"add","path":"/meta","value":{"theme":"My Theme"}}])).unwrap();
     lib.patch_cv("main", &p, Author::You, None).unwrap();
-    match lib.render_cv("main", None, None) {
-        Err(CoreError::NotFound(m)) => assert!(m.contains("builtin:classic"), "{m}"),
-        o => panic!("{o:?}"),
-    }
+    let out = lib.render_cv("main", None, None).unwrap();
+    assert!(out.contains("<style>"), "{out}");
+}
+
+#[test]
+fn render_cv_falls_back_to_classic_when_theme_missing() {
+    let (_d, lib) = setup("x");
+    let p: json_patch::Patch = serde_json::from_value(json!([{"op":"add","path":"/meta","value":{"theme":"gone"}}])).unwrap();
+    lib.patch_cv("main", &p, Author::You, None).unwrap();
+    let cv = lib.read_cv("main").unwrap().cv;
+    assert_eq!(lib.render_cv("main", None, None).unwrap(), lib.render(&cv, "builtin:classic").unwrap());
 }
 
 #[test]

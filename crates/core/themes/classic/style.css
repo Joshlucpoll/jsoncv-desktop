@@ -1,0 +1,59 @@
+@page { size: A4; margin: 14mm 14mm; }
+
+:root {
+  --ink: #1c222b;
+  --muted: #5d6673;
+  --accent: #23405f;
+  --rule: #d6dbe1;
+  --serif: Charter, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; color: var(--ink); font: 9.5pt/1.45 var(--sans); background: #fff; }
+a { color: inherit; text-decoration: none; }
+
+/* On screen the page is drawn as an A4 sheet; in print @page supplies the margin. */
+.cv { width: 210mm; margin: 0 auto; padding: 14mm; }
+@media print { .cv { width: auto; padding: 0; } }
+
+.masthead { display: flex; justify-content: space-between; align-items: flex-start; gap: 8mm; padding-bottom: 4mm; border-bottom: 1.5pt solid var(--accent); }
+h1 { margin: 0; font: 600 25pt/1.1 var(--serif); letter-spacing: -0.01em; color: var(--accent); }
+.label { margin: 1.5mm 0 0; font-size: 11pt; color: var(--muted); }
+.contact { display: flex; flex-wrap: wrap; gap: 0 4mm; margin: 3mm 0 0; padding: 0; list-style: none; font-size: 8.5pt; color: var(--muted); }
+.photo { width: 26mm; height: 26mm; border-radius: 50%; object-fit: cover; flex: none; }
+
+.summary { margin-top: 4mm; font-size: 10pt; }
+
+section { margin-top: 5.5mm; }
+h2 { margin: 0 0 2.5mm; padding-bottom: 1mm; border-bottom: 0.5pt solid var(--rule); font: 700 8pt/1.2 var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+
+.entry { break-inside: avoid; margin-bottom: 3.5mm; }
+.entry:last-child { margin-bottom: 0; }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 6mm; }
+h3 { margin: 0; font: 600 10.5pt/1.3 var(--sans); }
+.dates { flex: none; font-size: 8.5pt; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sub { margin: 0; color: var(--muted); font-style: italic; }
+.sub:empty { display: none; }
+.muted { margin: 1mm 0 0; color: var(--muted); font-size: 8.5pt; }
+
+.md p { margin: 1mm 0 0; }
+.md p:first-child { margin-top: 1mm; }
+.bullets { margin: 1mm 0 0; padding-left: 4.5mm; }
+.bullets li { margin: 0.4mm 0; padding-left: 0.5mm; }
+.bullets li p { margin: 0; }
+.bullets li::marker { color: var(--accent); }
+
+.tags { display: flex; flex-wrap: wrap; gap: 1mm 1.6mm; margin: 1.5mm 0 0; }
+.tags span { padding: 0 1.8mm; border: 0.5pt solid var(--rule); border-radius: 2mm; font-size: 8pt; color: var(--muted); }
+
+.pairs { margin: 0; }
+.pairs .entry { display: grid; grid-template-columns: 32mm 1fr; gap: 0 4mm; margin-bottom: 1.2mm; }
+.pairs dt { font-weight: 600; }
+.pairs dt small { font-weight: 400; color: var(--muted); }
+.pairs dd { margin: 0; }
+.pairs dd .md p { margin: 0; color: var(--muted); }
+
+blockquote { margin: 0 0 3.5mm; padding-left: 3.5mm; border-left: 1.5pt solid var(--rule); }
+blockquote footer { margin-top: 0.8mm; font-weight: 600; font-size: 8.5pt; color: var(--muted); }

@@ -1,0 +1,179 @@
+{% macro dates(s, e) %}{% if s or e %}{% if s %}{{ s | format_date("%b %Y") }} – {% endif %}{{ e | format_date("%b %Y") if e else "Present" }}{% endif %}{% endmacro %}
+{% macro tags(list) %}{% if list %}<p class="tags">{% for k in list %}<span>{{ k }}</span>{% endfor %}</p>{% endif %}{% endmacro %}
+{% set b = cv.basics or {} %}
+{% set loc = b.location or {} %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ b.name }}{% if b.label %} – {{ b.label }}{% endif %}</title>
+</head>
+<body>
+<main class="cv">
+  <header class="masthead">
+    <div>
+      <h1>{{ b.name }}</h1>
+      {% if b.label %}<p class="label">{{ b.label }}</p>{% endif %}
+      <ul class="contact">
+        {% if b.email %}<li><a href="mailto:{{ b.email }}">{{ b.email }}</a></li>{% endif %}
+        {% if b.phone %}<li>{{ b.phone }}</li>{% endif %}
+        {% set place = [loc.city, loc.region, loc.countryCode] | select | join(", ") %}
+        {% if place %}<li>{{ place }}</li>{% endif %}
+        {% if b.url %}<li><a href="{{ b.url }}">{{ b.url | strip_scheme }}</a></li>{% endif %}
+        {% for p in b.profiles %}<li><a href="{{ p.url }}">{{ p.network }}{% if p.username %}: {{ p.username }}{% endif %}</a></li>{% endfor %}
+      </ul>
+    </div>
+    {% if b.image %}<img class="photo" src="{{ b.image }}" alt="">{% endif %}
+  </header>
+
+  {% if b.summary %}<div class="summary md">{{ b.summary | markdown }}</div>{% endif %}
+
+  {% if cv.work %}
+  <section>
+    <h2>Work</h2>
+    {% for w in cv.work %}
+    <article class="entry">
+      <div class="row"><h3>{{ w.position or w.name }}</h3><span class="dates">{{ dates(w.startDate, w.endDate) }}</span></div>
+      <p class="sub">{% if w.position %}{{ w.name }}{% endif %}{% if w.location %} · {{ w.location }}{% endif %}{% if w.url %} · <a href="{{ w.url }}">{{ w.url | strip_scheme }}</a>{% endif %}</p>
+      {% if w.description %}<div class="md">{{ w.description | markdown }}</div>{% endif %}
+      {% if w.summary %}<div class="md">{{ w.summary | markdown }}</div>{% endif %}
+      {% if w.highlights %}<ul class="bullets">{% for h in w.highlights %}<li>{{ h | markdown }}</li>{% endfor %}</ul>{% endif %}
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if cv.projects %}
+  <section>
+    <h2>Projects</h2>
+    {% for p in cv.projects %}
+    <article class="entry">
+      <div class="row"><h3>{{ p.name }}</h3><span class="dates">{{ dates(p.startDate, p.endDate) if p.startDate or p.endDate }}</span></div>
+      {% if p.url %}<p class="sub"><a href="{{ p.url }}">{{ p.url | strip_scheme }}</a></p>{% endif %}
+      {% if p.description %}<div class="md">{{ p.description | markdown }}</div>{% endif %}
+      {% if p.highlights %}<ul class="bullets">{% for h in p.highlights %}<li>{{ h | markdown }}</li>{% endfor %}</ul>{% endif %}
+      {{ tags(p.keywords) }}
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if cv.education %}
+  <section>
+    <h2>Education</h2>
+    {% for e in cv.education %}
+    <article class="entry">
+      <div class="row"><h3>{{ e.institution }}</h3><span class="dates">{{ dates(e.startDate, e.endDate) }}</span></div>
+      <p class="sub">{{ [e.studyType, e.area] | select | join(", ") }}{% if e.score %} · {{ e.score }}{% endif %}</p>
+      {% if e.courses %}<p class="muted">{{ (e.courses or []) | join(" · ") }}</p>{% endif %}
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if cv.skills %}
+  <section>
+    <h2>Skills</h2>
+    <dl class="pairs">
+      {% for s in cv.skills %}
+      <div class="entry"><dt>{{ s.name }}{% if s.level %} <small>({{ s.level }})</small>{% endif %}</dt><dd>{{ (s.keywords or []) | join(" · ") }}{% if s.summary %}<span class="md">{{ s.summary | markdown }}</span>{% endif %}</dd></div>
+      {% endfor %}
+    </dl>
+  </section>
+  {% endif %}
+
+  {% if cv.volunteer %}
+  <section>
+    <h2>Volunteer</h2>
+    {% for v in cv.volunteer %}
+    <article class="entry">
+      <div class="row"><h3>{{ v.position or v.organization }}</h3><span class="dates">{{ dates(v.startDate, v.endDate) }}</span></div>
+      <p class="sub">{% if v.position %}{{ v.organization }}{% endif %}{% if v.url %} · <a href="{{ v.url }}">{{ v.url | strip_scheme }}</a>{% endif %}</p>
+      {% if v.summary %}<div class="md">{{ v.summary | markdown }}</div>{% endif %}
+      {% if v.highlights %}<ul class="bullets">{% for h in v.highlights %}<li>{{ h | markdown }}</li>{% endfor %}</ul>{% endif %}
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if cv.sideProjects %}
+  <section>
+    <h2>Side projects</h2>
+    {% for p in cv.sideProjects %}
+    <article class="entry">
+      <div class="row"><h3>{{ p.name }}</h3><span class="dates">{{ dates(p.startDate, p.endDate) if p.startDate or p.endDate }}</span></div>
+      {% if p.url %}<p class="sub"><a href="{{ p.url }}">{{ p.url | strip_scheme }}</a></p>{% endif %}
+      {% if p.description %}<div class="md">{{ p.description | markdown }}</div>{% endif %}
+      {{ tags(p.keywords) }}
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if cv.awards %}
+  <section>
+    <h2>Awards</h2>
+    {% for a in cv.awards %}
+    <article class="entry">
+      <div class="row"><h3>{{ a.title }}</h3><span class="dates">{{ a.date | format_date("%b %Y") }}</span></div>
+      {% if a.awarder %}<p class="sub">{{ a.awarder }}</p>{% endif %}
+      {% if a.summary %}<div class="md">{{ a.summary | markdown }}</div>{% endif %}
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if cv.certificates %}
+  <section>
+    <h2>Certificates</h2>
+    {% for c in cv.certificates %}
+    <article class="entry">
+      <div class="row"><h3>{{ c.name }}</h3><span class="dates">{{ c.date | format_date("%b %Y") }}</span></div>
+      <p class="sub">{{ c.issuer }}{% if c.url %} · <a href="{{ c.url }}">{{ c.url | strip_scheme }}</a>{% endif %}</p>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if cv.publications %}
+  <section>
+    <h2>Publications</h2>
+    {% for p in cv.publications %}
+    <article class="entry">
+      <div class="row"><h3>{{ p.name }}</h3><span class="dates">{{ p.releaseDate | format_date("%b %Y") }}</span></div>
+      <p class="sub">{{ p.publisher }}{% if p.url %} · <a href="{{ p.url }}">{{ p.url | strip_scheme }}</a>{% endif %}</p>
+      {% if p.summary %}<div class="md">{{ p.summary | markdown }}</div>{% endif %}
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if cv.languages %}
+  <section>
+    <h2>Languages</h2>
+    <dl class="pairs">
+      {% for l in cv.languages %}<div class="entry"><dt>{{ l.language }}</dt><dd>{{ l.fluency }}</dd></div>{% endfor %}
+    </dl>
+  </section>
+  {% endif %}
+
+  {% if cv.interests %}
+  <section>
+    <h2>Interests</h2>
+    <dl class="pairs">
+      {% for i in cv.interests %}<div class="entry"><dt>{{ i.name }}</dt><dd>{{ (i.keywords or []) | join(" · ") }}</dd></div>{% endfor %}
+    </dl>
+  </section>
+  {% endif %}
+
+  {% if cv.references %}
+  <section>
+    <h2>References</h2>
+    {% for r in cv.references %}
+    <blockquote class="entry"><div class="md">{{ r.reference | markdown }}</div><footer>{{ r.name }}</footer></blockquote>
+    {% endfor %}
+  </section>
+  {% endif %}
+</main>
+</body>
+</html>

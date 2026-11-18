@@ -65,9 +65,26 @@ pub(crate) struct BuiltinTheme {
     pub css: &'static str,
 }
 
-// Task 7 fills this.
 fn builtin_themes() -> &'static [BuiltinTheme] {
-    &[]
+    const THEMES: &[BuiltinTheme] = &[
+        BuiltinTheme {
+            id: "builtin:classic",
+            name: "Classic",
+            description: "One column, serif headings, tight print-friendly spacing.",
+            size: PageSize::A4,
+            template: include_str!("../themes/classic/template.html.j2"),
+            css: include_str!("../themes/classic/style.css"),
+        },
+        BuiltinTheme {
+            id: "builtin:two-column",
+            name: "Two column",
+            description: "Tinted sidebar for contact and skills, main column for experience.",
+            size: PageSize::A4,
+            template: include_str!("../themes/two-column/template.html.j2"),
+            css: include_str!("../themes/two-column/style.css"),
+        },
+    ];
+    THEMES
 }
 
 impl BuiltinTheme {

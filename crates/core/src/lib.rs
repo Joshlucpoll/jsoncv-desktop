@@ -7,3 +7,8 @@ pub mod render;
 pub mod schema;
 
 pub use error::{Author, CoreError};
+
+/// A fictional example CV, used by the app for "new CV" and previews.
+pub const SAMPLE_CV: &str = include_str!("../resources/sample.cv.json");
+/// Authoring guide for custom themes.
+pub const THEME_GUIDE: &str = include_str!("../resources/theme-guide.md");
