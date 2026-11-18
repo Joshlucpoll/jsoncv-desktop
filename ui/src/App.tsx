@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { type CvInfo, type ThemeInfo, errorMessage, listCvs, listThemes, onLibraryChanged, setCvTheme } from './api.ts'
+import { type CvInfo, type ThemeInfo, type Version, errorMessage, listCvs, listThemes, onLibraryChanged, setCvTheme } from './api.ts'
 import { Sidebar } from './components/Sidebar.tsx'
 import { Toolbar } from './components/Toolbar.tsx'
 import { EditPanel } from './components/EditPanel.tsx'
 import { Preview } from './components/Preview.tsx'
+import { ViewingBar } from './components/ViewingBar.tsx'
 
 export default function App() {
   const [cvs, setCvs] = useState<CvInfo[]>([])
   const [themes, setThemes] = useState<ThemeInfo[]>([])
   const [selected, setSelected] = useState('main')
-  const [commit] = useState<string>() // history commit preview: Task 14
+  const [viewing, setViewing] = useState<Version>() // past version shown in the preview; undefined = current
   const [reloadKey, setReloadKey] = useState(0)
   const [error, setError] = useState<string>()
   const [editing, setEditing] = useState(false)
@@ -18,6 +19,8 @@ export default function App() {
   const guarded = useCallback(async (go: () => void) => {
     if (!leaveRef.current || (await leaveRef.current())) go()
   }, [])
+  // Viewing a past version closes the edit panel first (through the guard).
+  const view = useCallback((v?: Version) => guarded(() => { setEditing(false); setViewing(v) }), [guarded])
   // cv/themes view (Task 15) is added with its feature.
 
   const fail = useCallback((e: unknown) => setError(errorMessage(e)), [])
@@ -59,13 +62,14 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => setSelected(n)))} onChanged={reloadCvs} onError={fail} />
+      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => { setViewing(undefined); setSelected(n) }))} onChanged={reloadCvs} onError={fail} reloadKey={reloadKey} viewing={viewing?.commit} onView={(v) => void view(v)} />
       <main className="main">
         <Toolbar
           name={current}
           theme={cv?.theme ?? null}
           themes={themes}
           editing={editing}
+          viewing={!!viewing}
           onEdit={() => void guarded(() => setEditing((v) => !v))}
           onTheme={(id) =>
             setCvTheme(current, id).then(reloadCvs, fail)
@@ -77,8 +81,18 @@ export default function App() {
             <button className="link" onClick={() => setError(undefined)}>Dismiss</button>
           </div>
         )}
+        {viewing && (
+          <ViewingBar
+            key={viewing.commit}
+            name={current}
+            version={viewing}
+            onBack={() => setViewing(undefined)}
+            onRestored={() => { setViewing(undefined); setReloadKey((k) => k + 1) }}
+            onError={fail}
+          />
+        )}
         <div className="workspace">
-          <Preview cv={current} commit={commit} reloadKey={reloadKey} />
+          <Preview cv={current} commit={viewing?.commit} reloadKey={reloadKey} />
           {editing && <EditPanel key={current} name={current} leaveRef={leaveRef} onError={fail} onClose={() => void guarded(() => setEditing(false))} />}
         </div>
       </main>

@@ -23,6 +23,16 @@ const sampleCv = {
   skills: [{ name: 'Mathematics', keywords: ['Algebra', 'Calculus'] }],
 }
 
+const M = 60_000
+const ver = (commit: string, author: string, message: string, ago: number) => ({ commit, author, message, time_ms: now - ago })
+const versions = [
+  ver('v0', 'You', 'Edit CV', 1 * M), ver('v1', 'You', 'Edit CV', 2 * M), ver('v2', 'You', 'Edit CV', 4 * M),
+  ver('v3', 'Agent', 'Tailor summary for Stripe', 40 * M),
+  ver('v4', 'External', 'Changed outside the app', 3 * 3_600_000),
+  ver('v5', 'You', 'Edit CV', 26 * 3_600_000), ver('v6', 'You', 'Edit CV', 26 * 3_600_000 + 2 * M),
+  ver('v7', 'You', 'Create main', 20 * 86_400_000),
+]
+
 mockIPC(
   (cmd, args) => {
     const a = args as Record<string, string>
@@ -37,8 +47,9 @@ mockIPC(
       }
       case 'get_schema': return schema
       case 'read_cv': return { name: a.name, cv: sampleCv, base: 'h1' }
-      case 'history': return [{ commit: 'c0ffee', author: 'You', message: 'edit', time_ms: now }]
-      case 'diff': return '@@ -2,3 +2,3 @@\n   "basics": {\n-    "name": "Ada Lovelace",\n+    "name": "Ada King",\n     "label": "Mathematician"'
+      case 'history': return [...versions]
+      case 'restore': versions.unshift({ commit: `r${versions.length}`, author: 'You', message: 'Restore version', time_ms: Date.now() }); return { commit: 'r', base: 'h3' }
+      case 'diff': return '--- a/main.cv.json\n+++ b/main.cv.json\n@@ -2,3 +2,3 @@\n   "basics": {\n-    "name": "Ada Lovelace",\n+    "name": "Ada King",\n     "label": "Mathematician"'
       case 'save_draft': return { commit: 'c1', base: 'h2' }
       case 'add_asset_from_path': return 'assets/photo.png'
       case 'plugin:dialog|open': return '/tmp/photo.png'

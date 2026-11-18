@@ -1,10 +1,10 @@
 import { DEFAULT_THEME, type ThemeInfo } from '../api.ts'
 
-type Props = { name: string; theme: string | null; themes: ThemeInfo[]; onTheme: (id: string) => void; editing: boolean; onEdit: () => void }
+type Props = { name: string; theme: string | null; themes: ThemeInfo[]; onTheme: (id: string) => void; editing: boolean; viewing: boolean; onEdit: () => void }
 
 const title = (name: string) => (name === 'main' ? 'Main CV' : name.replace(/^tailored\//, ''))
 
-export function Toolbar({ name, theme, themes, onTheme, editing, onEdit }: Props) {
+export function Toolbar({ name, theme, themes, onTheme, editing, viewing, onEdit }: Props) {
   const value = theme ?? DEFAULT_THEME
   const builtin = themes.filter((t) => t.builtin)
   const custom = themes.filter((t) => !t.builtin)
@@ -26,7 +26,7 @@ export function Toolbar({ name, theme, themes, onTheme, editing, onEdit }: Props
           )}
         </select>
       </label>
-      <button className={editing ? 'on' : undefined} aria-pressed={editing} onClick={onEdit}>Edit <kbd>{/mac/i.test(navigator.platform) ? '⌘E' : 'Ctrl+E'}</kbd></button>
+      <button className={editing ? 'on' : undefined} aria-pressed={editing} disabled={viewing} title={viewing ? 'Go back to the current version to edit' : undefined} onClick={onEdit}>Edit <kbd>{/mac/i.test(navigator.platform) ? '⌘E' : 'Ctrl+E'}</kbd></button>
       {/* Export is enabled in Task 15. */}
       <button disabled title="Coming soon">Export ▾</button>
     </header>

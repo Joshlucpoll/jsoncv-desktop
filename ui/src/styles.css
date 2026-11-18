@@ -173,3 +173,19 @@ button, select, input { font: inherit; color: inherit; }
 .diff-add { background: rgba(48, 164, 80, 0.2); }
 .diff-del { background: rgba(215, 0, 21, 0.16); }
 .diff-hunk { color: var(--muted); }
+
+/* History */
+.history { margin-top: 14px; }
+.history .empty { color: var(--muted); padding: 4px 8px; }
+.history-group { display: flex; align-items: center; }
+.history-group .item { flex: 1; min-width: 0; }
+.chevron { flex: none; width: 16px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 12px; cursor: default; }
+.history-item .when { flex: none; color: var(--muted); font-size: 11px; }
+.history-item.nested-version { padding-left: 24px; font-size: 12px; }
+.viewing-bar {
+  display: flex; align-items: center; gap: 8px; padding: 5px 14px; flex: none;
+  background: var(--accent-bg); border-bottom: 1px solid var(--line);
+}
+.viewing-bar button { border: 1px solid var(--line); background: var(--ctl); border-radius: 6px; padding: 2px 9px; font-size: 12px; cursor: default; }
+.viewing-bar button:disabled { opacity: 0.45; }
+.diff-hunk { opacity: 0.6; }
