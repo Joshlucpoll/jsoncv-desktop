@@ -75,3 +75,33 @@ fn sync_folder_detection() {
     }
     assert!(!is_in_sync_folder(&home.join("Documents/CVs")));
 }
+
+#[test]
+fn open_appends_to_existing_gitignore() {
+    let d = TempDir::new().unwrap();
+    std::fs::write(d.path().join(".gitignore"), "node_modules/").unwrap();
+    Library::open(d.path()).unwrap();
+    let gi = std::fs::read_to_string(d.path().join(".gitignore")).unwrap();
+    assert!(gi.starts_with("node_modules/"));
+    assert!(gi.lines().any(|l| l == "exports/"));
+}
+
+#[test]
+fn list_reports_bad_file_name() {
+    let d = TempDir::new().unwrap();
+    let lib = Library::open(d.path()).unwrap();
+    std::fs::write(d.path().join("tailored/My CV.cv.json"), "{}").unwrap();
+    let l = lib.list_cvs().unwrap();
+    let e = l.iter().find(|c| c.name == "tailored/My CV").unwrap();
+    assert!(e.error.as_deref().unwrap().starts_with("Invalid file name"));
+}
+
+#[test]
+fn list_reports_missing_main() {
+    let d = TempDir::new().unwrap();
+    let lib = Library::open(d.path()).unwrap();
+    std::fs::remove_file(d.path().join("main.cv.json")).unwrap();
+    let l = lib.list_cvs().unwrap();
+    assert_eq!(l[0].name, "main");
+    assert_eq!(l[0].error.as_deref(), Some("main.cv.json is missing"));
+}

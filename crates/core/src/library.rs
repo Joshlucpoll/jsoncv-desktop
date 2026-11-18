@@ -51,10 +51,15 @@ impl Library {
             std::fs::write(&main, SAMPLE)?;
         }
         let gi = root.join(".gitignore");
-        let cur = std::fs::read_to_string(&gi).unwrap_or_default();
-        if !cur.lines().any(|l| l == "exports/") {
-            let sep = if cur.is_empty() || cur.ends_with('\n') { "" } else { "\n" };
-            std::fs::write(&gi, format!("{cur}{sep}exports/\n"))?;
+        let cur = match std::fs::read(&gi) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
+            Err(e) => return Err(e.into()),
+        };
+        if !cur.split(|b| *b == b'\n').any(|l| l == b"exports/") {
+            let sep = if cur.is_empty() || cur.ends_with(b"\n") { "" } else { "\n" };
+            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&gi)?;
+            std::io::Write::write_all(&mut f, format!("{sep}exports/\n").as_bytes())?;
         }
         if !root.join(".git").exists() {
             git2::Repository::init(root)?;
@@ -96,8 +101,17 @@ impl Library {
         names.extend(tailored);
         let mut out = vec![];
         for name in names {
-            let Ok(path) = self.cv_path(&name) else { continue };
-            let Ok(meta) = std::fs::metadata(&path) else { continue };
+            let bad = |error: &str| CvInfo {
+                name: name.clone(), theme: None, tailored_from: None, modified_ms: 0, error: Some(error.into()),
+            };
+            let Ok(path) = self.cv_path(&name) else {
+                out.push(bad("Invalid file name: use lowercase letters, digits and dashes"));
+                continue;
+            };
+            let Ok(meta) = std::fs::metadata(&path) else {
+                out.push(bad("main.cv.json is missing"));
+                continue;
+            };
             let modified_ms = meta
                 .modified()
                 .ok()

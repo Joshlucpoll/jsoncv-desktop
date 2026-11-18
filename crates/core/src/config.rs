@@ -26,7 +26,9 @@ pub fn load() -> Config {
 pub fn save(cfg: &Config) -> io::Result<()> {
     let f = config_file().ok_or_else(|| io::Error::other("no config dir"))?;
     std::fs::create_dir_all(f.parent().unwrap())?;
-    std::fs::write(f, serde_json::to_vec_pretty(cfg)?)
+    let tmp = f.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec_pretty(cfg)?)?;
+    std::fs::rename(tmp, f)
 }
 
 /// True when `p` sits in a cloud-sync folder, where Git repos can corrupt.
