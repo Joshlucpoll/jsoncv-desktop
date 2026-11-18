@@ -307,7 +307,7 @@ impl JsoncvServer {
         let bytes = match (&a.path, &a.base64) {
             (Some(p), None) => {
                 match std::fs::metadata(p) {
-                    Ok(m) if m.len() > 20 * 1024 * 1024 => return text_err("bad path: Asset too large (max 20 MB)".into()),
+                    Ok(m) if m.len() > jsoncv_core::MAX_ASSET_BYTES as u64 => return text_err("bad path: Asset too large (max 20 MB)".into()),
                     Err(e) => return text_err(format!("cannot read {p}: {e}")),
                     _ => {}
                 }

@@ -6,15 +6,13 @@ use jsoncv_core::history::Version;
 use jsoncv_core::library::{CvInfo, Library, Saved};
 use jsoncv_core::render::ThemeInfo;
 use jsoncv_core::schema::SchemaError;
-use jsoncv_core::{config, Author, CoreError};
+use jsoncv_core::{config, Author, CoreError, MAX_ASSET_BYTES};
 use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::app::{lock, preview_url, start_watcher, AppState};
-
-const MAX_ASSET: u64 = 20 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 pub struct ApiError {
@@ -65,70 +63,85 @@ impl From<tauri::Error> for ApiError {
 
 type Res<T> = Result<T, ApiError>;
 
-#[tauri::command]
-pub fn list_cvs(state: State<AppState>) -> Res<Vec<CvInfo>> {
-    Ok(state.lib().list_cvs()?)
+/// Runs blocking file/Git work off the main thread. Sync Tauri commands run inline on the
+/// main thread, and core's `with_lock` can sleep-retry for up to 2 s.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, ApiError> + Send + 'static) -> Res<T> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| std::io::Error::other(e.to_string()))?
+}
+
+/// `blocking` with a clone of the current library.
+async fn with_lib<T: Send + 'static>(
+    state: &State<'_, AppState>,
+    f: impl FnOnce(Library) -> Result<T, CoreError> + Send + 'static,
+) -> Res<T> {
+    let lib = state.lib();
+    blocking(move || Ok(f(lib)?)).await
 }
 
 #[tauri::command]
-pub fn read_cv(state: State<AppState>, name: String) -> Res<Value> {
-    let doc = state.lib().read_cv(&name)?;
+pub async fn list_cvs(state: State<'_, AppState>) -> Res<Vec<CvInfo>> {
+    with_lib(&state, |l| l.list_cvs()).await
+}
+
+#[tauri::command]
+pub async fn read_cv(state: State<'_, AppState>, name: String) -> Res<Value> {
+    let doc = with_lib(&state, move |l| l.read_cv(&name)).await?;
     Ok(json!({ "name": doc.name, "cv": doc.cv, "base": doc.base }))
 }
 
 #[tauri::command]
-pub fn save_draft(state: State<AppState>, name: String, base_cv: Value, draft: Value) -> Res<Saved> {
-    Ok(state.lib().save_draft(&name, &base_cv, &draft)?)
+pub async fn save_draft(state: State<'_, AppState>, name: String, base_cv: Value, draft: Value) -> Res<Saved> {
+    with_lib(&state, move |l| l.save_draft(&name, &base_cv, &draft)).await
 }
 
 #[tauri::command]
-pub fn create_tailored(state: State<AppState>, slug: String, from: String) -> Res<CvInfo> {
-    Ok(state.lib().create_tailored(&slug, &from, Author::You)?)
+pub async fn create_tailored(state: State<'_, AppState>, slug: String, from: String) -> Res<CvInfo> {
+    with_lib(&state, move |l| l.create_tailored(&slug, &from, Author::You)).await
 }
 
 #[tauri::command]
-pub fn rename_cv(state: State<AppState>, name: String, new_slug: String) -> Res<CvInfo> {
-    Ok(state.lib().rename_cv(&name, &new_slug, Author::You)?)
+pub async fn rename_cv(state: State<'_, AppState>, name: String, new_slug: String) -> Res<CvInfo> {
+    with_lib(&state, move |l| l.rename_cv(&name, &new_slug, Author::You)).await
 }
 
 #[tauri::command]
-pub fn delete_cv(state: State<AppState>, name: String) -> Res<()> {
-    Ok(state.lib().delete_cv(&name, Author::You)?)
+pub async fn delete_cv(state: State<'_, AppState>, name: String) -> Res<()> {
+    with_lib(&state, move |l| l.delete_cv(&name, Author::You)).await
 }
 
 #[tauri::command]
-pub fn history(state: State<AppState>, name: String, limit: usize) -> Res<Vec<Version>> {
-    Ok(state.lib().history(&name, limit)?)
+pub async fn history(state: State<'_, AppState>, name: String, limit: usize) -> Res<Vec<Version>> {
+    with_lib(&state, move |l| l.history(&name, limit)).await
 }
 
 #[tauri::command]
-pub fn diff(state: State<AppState>, name: String, commit: String) -> Res<String> {
-    Ok(state.lib().diff(&name, &commit)?)
+pub async fn diff(state: State<'_, AppState>, name: String, commit: String) -> Res<String> {
+    with_lib(&state, move |l| l.diff(&name, &commit)).await
 }
 
 #[tauri::command]
-pub fn restore(state: State<AppState>, name: String, commit: String) -> Res<Saved> {
-    Ok(state.lib().restore(&name, &commit, Author::You)?)
+pub async fn restore(state: State<'_, AppState>, name: String, commit: String) -> Res<Saved> {
+    with_lib(&state, move |l| l.restore(&name, &commit, Author::You)).await
 }
 
 #[tauri::command]
-pub fn list_themes(state: State<AppState>) -> Res<Vec<ThemeInfo>> {
-    Ok(state.lib().list_themes()?)
+pub async fn list_themes(state: State<'_, AppState>) -> Res<Vec<ThemeInfo>> {
+    with_lib(&state, |l| l.list_themes()).await
 }
 
 #[tauri::command]
-pub fn theme_report(state: State<AppState>, id: String) -> Res<ThemeReport> {
-    Ok(state.lib().theme_report(&id)?)
+pub async fn theme_report(state: State<'_, AppState>, id: String) -> Res<ThemeReport> {
+    with_lib(&state, move |l| l.theme_report(&id)).await
 }
 
 #[tauri::command]
-pub fn duplicate_theme(state: State<AppState>, id: String, new_id: String) -> Res<ThemeInfo> {
-    Ok(state.lib().duplicate_theme(&id, &new_id, Author::You)?)
+pub async fn duplicate_theme(state: State<'_, AppState>, id: String, new_id: String) -> Res<ThemeInfo> {
+    with_lib(&state, move |l| l.duplicate_theme(&id, &new_id, Author::You)).await
 }
 
 #[tauri::command]
-pub fn set_cv_theme(state: State<AppState>, name: String, theme_id: String) -> Res<Saved> {
-    Ok(state.lib().set_cv_theme(&name, &theme_id, Author::You)?)
+pub async fn set_cv_theme(state: State<'_, AppState>, name: String, theme_id: String) -> Res<Saved> {
+    with_lib(&state, move |l| l.set_cv_theme(&name, &theme_id, Author::You)).await
 }
 
 #[tauri::command]
@@ -141,7 +154,9 @@ pub async fn export(state: State<'_, AppState>, name: String, format: ExportForm
 /// sync command deadlocks on Windows.
 #[tauri::command]
 pub async fn print_cv(app: AppHandle, state: State<'_, AppState>, name: String) -> Res<()> {
-    state.lib().read_cv(&name)?;
+    // Render first so a broken CV or theme reaches the caller instead of printing the error page.
+    let n = name.clone();
+    with_lib(&state, move |l| l.render_cv(&n, None, None)).await?;
     let label: String =
         format!("print-{name}").chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
     let url = preview_url(&name);
@@ -165,13 +180,17 @@ pub async fn print_cv(app: AppHandle, state: State<'_, AppState>, name: String) 
 }
 
 #[tauri::command]
-pub fn add_asset_from_path(state: State<AppState>, path: PathBuf) -> Res<String> {
-    if std::fs::metadata(&path)?.len() > MAX_ASSET {
-        return Err(CoreError::BadPath("Asset too large (max 20 MB)".into()).into());
-    }
-    let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let bytes = std::fs::read(&path)?;
-    Ok(state.lib().add_asset(&file_name, &bytes, Author::You)?)
+pub async fn add_asset_from_path(state: State<'_, AppState>, path: PathBuf) -> Res<String> {
+    let lib = state.lib();
+    blocking(move || {
+        if std::fs::metadata(&path)?.len() > MAX_ASSET_BYTES as u64 {
+            return Err(CoreError::BadPath("Asset too large (max 20 MB)".into()).into());
+        }
+        let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let bytes = std::fs::read(&path)?;
+        Ok(lib.add_asset(&file_name, &bytes, Author::You)?)
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -194,12 +213,16 @@ pub fn get_config(state: State<AppState>) -> LibraryConfig {
 }
 
 #[tauri::command]
-pub fn set_library(app: AppHandle, state: State<AppState>, path: PathBuf) -> Res<LibraryConfig> {
+pub async fn set_library(app: AppHandle, state: State<'_, AppState>, path: PathBuf) -> Res<LibraryConfig> {
     if !path.is_absolute() {
         return Err(CoreError::BadPath(format!("Library path must be absolute: {}", path.display())).into());
     }
-    let lib = Library::open(&path)?;
-    config::save(&config::Config { library: path })?;
+    let lib = blocking(move || {
+        let lib = Library::open(&path)?;
+        config::save(&config::Config { library: path })?;
+        Ok(lib)
+    })
+    .await?;
     let watcher = start_watcher(app, lib.clone());
     let out = library_config(&lib);
     *lock(&state.lib) = lib;
@@ -208,9 +231,11 @@ pub fn set_library(app: AppHandle, state: State<AppState>, path: PathBuf) -> Res
 }
 
 #[tauri::command]
-pub fn reveal(path: PathBuf) -> Res<()> {
-    tauri_plugin_opener::reveal_item_in_dir(Path::new(&path))
-        .map_err(|e| std::io::Error::other(e.to_string()).into())
+pub async fn reveal(path: PathBuf) -> Res<()> {
+    blocking(move || {
+        tauri_plugin_opener::reveal_item_in_dir(Path::new(&path)).map_err(|e| std::io::Error::other(e.to_string()).into())
+    })
+    .await
 }
 
 #[tauri::command]

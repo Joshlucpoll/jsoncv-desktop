@@ -38,7 +38,6 @@ impl AppState {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let lib = Library::open(&config::load().library)?;
             let watcher = start_watcher(app.handle().clone(), lib.clone());
@@ -204,9 +203,14 @@ pub fn start_watcher(app: AppHandle, lib: Library) -> Option<RecommendedWatcher>
                 }
             }
             if sweep_due && pending.is_empty() && last.elapsed() >= SWEEP_DELAY {
-                sweep_due = false;
-                if let Err(e) = lib.sweep_external_locked() {
-                    eprintln!("jsoncv: sweep failed: {e}");
+                match lib.sweep_external_locked() {
+                    // Another writer holds the lock: try again after another quiet period.
+                    Err(CoreError::Locked) => last = Instant::now(),
+                    Err(e) => {
+                        sweep_due = false;
+                        eprintln!("jsoncv: sweep failed: {e}");
+                    }
+                    Ok(_) => sweep_due = false,
                 }
             }
         }

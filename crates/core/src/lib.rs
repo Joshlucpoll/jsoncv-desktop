@@ -8,6 +8,7 @@ pub mod library;
 pub mod render;
 pub mod schema;
 
+pub use assets::MAX_ASSET_BYTES;
 pub use error::{Author, CoreError};
 
 /// A fictional example CV, used by the app for "new CV" and previews.

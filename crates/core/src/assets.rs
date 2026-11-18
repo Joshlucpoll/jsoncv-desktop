@@ -10,7 +10,8 @@ use crate::history::{commit, with_lock};
 use crate::library::Library;
 use crate::{Author, CoreError};
 
-const MAX_ASSET: usize = 20 * 1024 * 1024;
+/// Largest asset `add_asset` accepts.
+pub const MAX_ASSET_BYTES: usize = 20 * 1024 * 1024;
 
 pub(crate) fn safe_join(base: &Path, rel: &str) -> Option<PathBuf> {
     let rel = Path::new(rel);
@@ -97,7 +98,7 @@ impl Library {
         if name.is_empty() {
             return Err(CoreError::BadPath(format!("Invalid asset name: {file_name}")));
         }
-        if bytes.len() > MAX_ASSET {
+        if bytes.len() > MAX_ASSET_BYTES {
             return Err(CoreError::BadPath("Asset too large (max 20 MB)".into()));
         }
         let dir = self.root().join("assets");
