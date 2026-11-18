@@ -1,0 +1,18 @@
+[package]
+name = "jsoncv_mcp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jsoncv_core = { path = "../core" }
+rmcp = { version = "3", features = ["server", "macros", "transport-io"] }
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+json-patch = "5"
+base64 = "0.23"
+anyhow = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+tempfile = "3"
