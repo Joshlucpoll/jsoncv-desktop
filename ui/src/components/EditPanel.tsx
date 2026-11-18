@@ -4,7 +4,7 @@ import validator from '@rjsf/validator-ajv8'
 import type { IconButtonProps, ObjectFieldTemplateProps, RJSFSchema, UiSchema, WidgetProps } from '@rjsf/utils'
 import CodeMirror from '@uiw/react-codemirror'
 import { json } from '@codemirror/lang-json'
-import { open } from '@tauri-apps/plugin-dialog'
+import { ask, open } from '@tauri-apps/plugin-dialog'
 import {
   type ApiError, type SchemaError, addAssetFromPath, errorMessage, getSchema, history, onLibraryChanged, readCv, saveDraft,
 } from '../api.ts'
@@ -13,12 +13,14 @@ import { DiffView } from './DiffView.tsx'
 
 const SAVE_DELAY_MS = 1000
 
+// Keys holding undefined are absent in JSON, so they do not count.
+const keys = (o: object) => Object.keys(o).filter((k) => (o as Record<string, unknown>)[k] !== undefined)
+
 function same(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (typeof a !== 'object' || typeof b !== 'object' || !a || !b || Array.isArray(a) !== Array.isArray(b)) return false
-  const ka = Object.keys(a)
-  const kb = Object.keys(b)
-  return ka.length === kb.length && ka.every((k) => same((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
+  const ka = keys(a)
+  return ka.length === keys(b).length && ka.every((k) => same((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
 }
 
 function ObjectFieldTemplate({ fieldPathId, title, properties }: ObjectFieldTemplateProps) {
@@ -86,7 +88,15 @@ const templates = {
 const widgets = { imageFile: ImageWidget }
 const dark = matchMedia('(prefers-color-scheme: dark)').matches
 
-export function EditPanel({ name, onClose }: { name: string; onClose(): void }) {
+type Props = {
+  name: string
+  onClose(): void
+  onError(message: string): void
+  /** The panel registers a check App runs before closing it or switching CV. */
+  leaveRef: { current: (() => Promise<boolean>) | null }
+}
+
+export function EditPanel({ name, onClose, onError, leaveRef }: Props) {
   const [schema, setSchema] = useState<RJSFSchema>()
   const [base, setBase] = useState<unknown>()
   const [draft, setDraft] = useState<unknown>()
@@ -109,8 +119,15 @@ export function EditPanel({ name, onClose }: { name: string; onClose(): void }) 
   const saving = useRef(false)
   const lastBase = useRef('') // content hash of what we last read or saved
   const scheduleRef = useRef<() => void>(() => {})
+  const jsonErrRef = useRef<string>(undefined) // set while the JSON tab holds text that does not parse
+  const diskChanged = useRef(false) // the file changed while we held an unsaved draft
+  const inflight = useRef<Promise<void>>(undefined)
+  const lastError = useRef<string>(undefined)
 
-  const dirty = () => !same(draftRef.current, baseRef.current)
+  const unsavedDraft = () => !same(draftRef.current, baseRef.current)
+  // Unparsed JSON text is unsaved work too.
+  const dirty = () => unsavedDraft() || !!jsonErrRef.current
+  const busy_ = () => dirty() || !!timer.current || saving.current || conflictRef.current
   const isValid = (d: unknown) =>
     !!schemaRef.current && !validator.rawValidation(schemaRef.current, d).errors?.length
 
@@ -120,6 +137,7 @@ export function EditPanel({ name, onClose }: { name: string; onClose(): void }) 
     setBase(cv)
     setDraft(cv)
     setJsonText(JSON.stringify(cv, null, 2))
+    jsonErrRef.current = undefined
     setJsonError(undefined)
     setLoadCommit(commit)
   }, [])
@@ -129,36 +147,54 @@ export function EditPanel({ name, onClose }: { name: string; onClose(): void }) 
     applyDisk(doc.cv, doc.base, h[0]?.commit)
   }, [name, applyDisk])
 
-  const flush = useCallback(async () => {
+  const flush = useCallback((): Promise<void> => {
     window.clearTimeout(timer.current)
     timer.current = undefined
-    if (saving.current || conflictRef.current || !dirty() || !isValid(draftRef.current)) return setPending(false)
+    if (saving.current) return inflight.current ?? Promise.resolve()
+    if (conflictRef.current || !unsavedDraft() || !isValid(draftRef.current)) {
+      setPending(false)
+      return Promise.resolve()
+    }
     saving.current = true
     const sent = draftRef.current
-    try {
-      const res = await saveDraft(name, baseRef.current, sent)
-      baseRef.current = sent
-      lastBase.current = res.base
-      setBase(sent)
-      setLoadCommit(res.commit)
-      setSaveError(undefined)
-      setServerErrors(undefined)
-    } catch (e) {
-      const err = e as ApiError
-      if (err.kind === 'PatchFailed') {
-        conflictRef.current = true
-        setConflict(true)
-      } else if (err.kind === 'Invalid') {
-        setServerErrors(err.errors ?? [{ path: '', message: err.message }])
-      } else {
-        setSaveError(errorMessage(e)) // draft stays; the next change retries
+    const run = async () => {
+      try {
+        const res = await saveDraft(name, baseRef.current, sent)
+        baseRef.current = sent
+        lastBase.current = res.base
+        setBase(sent)
+        if (res.commit) setLoadCommit(res.commit)
+        lastError.current = undefined
+        setSaveError(undefined)
+        setServerErrors(undefined)
+        // The save merged other edits into the file; show the merged result and rebase on it.
+        if (diskChanged.current && draftRef.current === sent) {
+          diskChanged.current = false
+          const [doc, h] = await Promise.all([readCv(name), history(name, 1).catch(() => [])])
+          if (draftRef.current === sent && doc.base !== lastBase.current) applyDisk(doc.cv, doc.base, h[0]?.commit)
+        }
+      } catch (e) {
+        const err = e as ApiError
+        if (err.kind === 'PatchFailed') {
+          conflictRef.current = true
+          setConflict(true)
+          lastError.current = 'This CV changed while you were editing'
+        } else if (err.kind === 'Invalid') {
+          setServerErrors(err.errors ?? [{ path: '', message: err.message }])
+          lastError.current = err.message
+        } else {
+          lastError.current = errorMessage(e)
+          setSaveError(lastError.current) // draft stays; the next change retries
+        }
+      } finally {
+        saving.current = false
+        if (unsavedDraft() && !conflictRef.current && !timer.current && draftRef.current !== sent) scheduleRef.current()
+        else setPending(false)
       }
-    } finally {
-      saving.current = false
-      if (dirty() && !conflictRef.current && !timer.current && draftRef.current !== sent) scheduleRef.current()
-      else setPending(false)
     }
-  }, [name])
+    inflight.current = run()
+    return inflight.current
+  }, [name, applyDisk])
 
   const schedule = useCallback(() => {
     window.clearTimeout(timer.current)
@@ -191,28 +227,44 @@ export function EditPanel({ name, onClose }: { name: string; onClose(): void }) 
 
   useEffect(() => {
     const un = onLibraryChanged((paths) => {
-      if (!paths.includes(`${name}.cv.json`) || dirty() || timer.current || saving.current || conflictRef.current) return
-      readCv(name).then(async (doc) => {
-        if (doc.base === lastBase.current || dirty() || timer.current || saving.current) return
-        applyDisk(doc.cv, doc.base, (await history(name, 1).catch(() => []))[0]?.commit)
+      if (!paths.includes(`${name}.cv.json`)) return
+      if (busy_()) {
+        diskChanged.current = true
+        return
+      }
+      Promise.all([readCv(name), history(name, 1).catch(() => [])]).then(([doc, h]) => {
+        // Re-check after the awaits: the user may have typed meanwhile.
+        if (doc.base === lastBase.current) return
+        if (busy_()) diskChanged.current = true
+        else applyDisk(doc.cv, doc.base, h[0]?.commit)
       }, () => {})
     })
     return () => void un.then((f) => f())
   }, [name, applyDisk])
 
-  // Closing or switching CV must not drop a pending edit.
-  useEffect(() => () => {
-    window.clearTimeout(timer.current)
-    if (!conflictRef.current && !saving.current && dirty() && isValid(draftRef.current)) {
-      saveDraft(name, baseRef.current, draftRef.current).catch(() => {})
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+
+  // App calls this before closing the panel or switching CV. false cancels the leave.
+  useEffect(() => {
+    leaveRef.current = async () => {
+      for (let i = 0; i < 3 && unsavedDraft() && !conflictRef.current && !jsonErrRef.current && isValid(draftRef.current); i++) await flush()
+      if (!dirty()) return true
+      if (conflictRef.current || jsonErrRef.current || !isValid(draftRef.current)) {
+        return ask("You have unsaved changes that can't be saved yet. Discard them?", { title: 'Unsaved changes', kind: 'warning' })
+      }
+      onError(lastError.current ?? "Couldn't save your changes")
+      return false
     }
-  }, [name])
+    return () => { leaveRef.current = null }
+  }, [flush, leaveRef, onError])
 
   const discard = async () => {
     window.clearTimeout(timer.current)
     conflictRef.current = false
     setConflict(false)
     setServerErrors(undefined)
+    setSaveError(undefined)
+    diskChanged.current = false
     await load().catch((e) => setSaveError(errorMessage(e)))
     setPending(false)
   }
@@ -226,14 +278,17 @@ export function EditPanel({ name, onClose }: { name: string; onClose(): void }) 
       baseRef.current = sent
       lastBase.current = res.base
       setBase(sent)
-      setLoadCommit(res.commit)
+      if (res.commit) setLoadCommit(res.commit)
       conflictRef.current = false
       setConflict(false)
+      setSaveError(undefined)
       setPending(false)
+      if (draftRef.current !== sent) scheduleRef.current()
     } catch (e) {
       const err = e as ApiError
       if (err.kind === 'Invalid') setServerErrors(err.errors ?? [{ path: '', message: err.message }])
-      else if (err.kind !== 'PatchFailed') setSaveError(errorMessage(e))
+      else if (err.kind === 'PatchFailed') setSaveError('Changed again — try Overwrite once more')
+      else setSaveError(errorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -243,14 +298,20 @@ export function EditPanel({ name, onClose }: { name: string; onClose(): void }) 
     setJsonText(text)
     try {
       const parsed = JSON.parse(text)
+      jsonErrRef.current = undefined
       setJsonError(undefined)
       onDraft(parsed)
     } catch (e) {
-      setJsonError(errorMessage(e))
+      jsonErrRef.current = errorMessage(e)
+      setJsonError(`Invalid JSON: ${errorMessage(e)}`)
     }
   }
 
   const switchTab = (t: 'form' | 'json') => {
+    if (t === 'form' && jsonErrRef.current) {
+      setJsonError(`Fix the JSON before switching to the form. ${jsonErrRef.current}`)
+      return
+    }
     if (t === 'json') {
       setJsonText(JSON.stringify(draftRef.current, null, 2))
       setJsonError(undefined)
@@ -258,7 +319,7 @@ export function EditPanel({ name, onClose }: { name: string; onClose(): void }) 
     setTab(t)
   }
 
-  const unsaved = pending || (base !== undefined && !same(draft, base))
+  const unsaved = pending || !!jsonError || (base !== undefined && !same(draft, base))
   const form = useMemo(
     () =>
       schema && draft !== undefined ? (
@@ -302,7 +363,7 @@ export function EditPanel({ name, onClose }: { name: string; onClose(): void }) 
         {tab === 'form' ? form : (
           <>
             <CodeMirror value={jsonText} extensions={[json()]} theme={dark ? 'dark' : 'light'} onChange={onJson} basicSetup={{ foldGutter: false }} />
-            {jsonError && <div className="field-error">Invalid JSON: {jsonError}</div>}
+            {jsonError && <div className="field-error">{jsonError}</div>}
           </>
         )}
       </div>

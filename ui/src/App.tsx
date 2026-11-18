@@ -13,6 +13,11 @@ export default function App() {
   const [reloadKey, setReloadKey] = useState(0)
   const [error, setError] = useState<string>()
   const [editing, setEditing] = useState(false)
+  const leaveRef = useRef<(() => Promise<boolean>) | null>(null)
+  // Run `go` only if the edit panel (when open) agrees to leave: it saves or asks before dropping a draft.
+  const guarded = useCallback(async (go: () => void) => {
+    if (!leaveRef.current || (await leaveRef.current())) go()
+  }, [])
   // cv/themes view (Task 15) is added with its feature.
 
   const fail = useCallback((e: unknown) => setError(errorMessage(e)), [])
@@ -45,23 +50,23 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'e') {
         e.preventDefault()
-        setEditing((v) => !v)
+        void guarded(() => setEditing((v) => !v))
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [guarded])
 
   return (
     <div className="app">
-      <Sidebar cvs={cvs} selected={current} onSelect={setSelected} onChanged={reloadCvs} onError={fail} />
+      <Sidebar cvs={cvs} selected={current} onSelect={(n) => void guarded(() => setSelected(n))} onChanged={reloadCvs} onError={fail} />
       <main className="main">
         <Toolbar
           name={current}
           theme={cv?.theme ?? null}
           themes={themes}
           editing={editing}
-          onEdit={() => setEditing((v) => !v)}
+          onEdit={() => void guarded(() => setEditing((v) => !v))}
           onTheme={(id) =>
             setCvTheme(current, id).then(reloadCvs, fail)
           }
@@ -74,7 +79,7 @@ export default function App() {
         )}
         <div className="workspace">
           <Preview cv={current} commit={commit} reloadKey={reloadKey} />
-          {editing && <EditPanel key={current} name={current} onClose={() => setEditing(false)} />}
+          {editing && <EditPanel key={current} name={current} leaveRef={leaveRef} onError={fail} onClose={() => void guarded(() => setEditing(false))} />}
         </div>
       </main>
     </div>
