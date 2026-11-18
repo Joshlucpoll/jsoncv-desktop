@@ -1,0 +1,10 @@
+[package]
+name = "jsoncv_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jsonschema = "0.61"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "2"
