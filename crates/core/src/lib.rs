@@ -1,4 +1,6 @@
+pub mod config;
 pub mod error;
+pub mod library;
 pub mod schema;
 
 pub use error::{Author, CoreError};

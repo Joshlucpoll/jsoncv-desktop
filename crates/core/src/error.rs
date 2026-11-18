@@ -24,6 +24,8 @@ pub enum CoreError {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Git(#[from] git2::Error),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

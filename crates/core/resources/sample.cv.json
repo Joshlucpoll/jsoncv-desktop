@@ -1,0 +1,70 @@
+{
+  "basics": {
+    "name": "Mara Lindqvist",
+    "label": "Embedded Software Engineer",
+    "email": "mara@example.com",
+    "phone": "555-0142",
+    "url": "https://maralindqvist.example.com",
+    "summary": "Engineer with a decade of experience building reliable firmware and tooling for small connected devices.",
+    "location": {
+      "city": "Gothenburg",
+      "countryCode": "SE"
+    },
+    "profiles": [
+      {
+        "network": "GitHub",
+        "username": "maral",
+        "url": "https://github.example.com/maral"
+      }
+    ]
+  },
+  "work": [
+    {
+      "name": "Northwind Sensors",
+      "position": "Senior Firmware Engineer",
+      "startDate": "2021-03",
+      "summary": "Lead firmware for a line of low-power environmental sensors.",
+      "highlights": [
+        "Cut idle power draw by 40% with a new sleep scheduler",
+        "Introduced hardware-in-the-loop tests that run on every merge"
+      ]
+    },
+    {
+      "name": "Kestrel Robotics",
+      "position": "Software Engineer",
+      "startDate": "2016-06",
+      "endDate": "2021-02",
+      "summary": "Built motor control and telemetry software for warehouse robots.",
+      "highlights": [
+        "Shipped an over-the-air update system used on 2,000 robots"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "institution": "Chalmers University of Technology",
+      "area": "Electrical Engineering",
+      "studyType": "MSc",
+      "startDate": "2011",
+      "endDate": "2016"
+    }
+  ],
+  "skills": [
+    {
+      "name": "Languages",
+      "keywords": ["Rust", "C", "Python"]
+    },
+    {
+      "name": "Embedded",
+      "keywords": ["RTOS", "Bluetooth LE", "CAN bus"]
+    }
+  ],
+  "projects": [
+    {
+      "name": "tinylog",
+      "description": "A small structured logging library for microcontrollers.",
+      "startDate": "2019-01-15",
+      "keywords": ["Rust", "no_std"]
+    }
+  ]
+}
