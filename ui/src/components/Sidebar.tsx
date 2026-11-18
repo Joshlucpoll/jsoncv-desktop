@@ -11,7 +11,7 @@ export function Sidebar({ reloadKey, viewing, onView, ...p }: Props) {
   return (
     <aside className="sidebar">
       <CvList {...p} />
-      <HistoryList name={p.selected} reloadKey={reloadKey} viewing={viewing} onView={onView} onError={p.onError} />
+      <HistoryList key={p.selected} name={p.selected} reloadKey={reloadKey} viewing={viewing} onView={onView} onError={p.onError} />
     </aside>
   )
 }

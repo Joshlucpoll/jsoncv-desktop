@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { MOCK, type Version, restore } from '../api.ts'
-import { relativeTime } from '../lib/history.ts'
+import { relativeTime, useNow } from '../lib/history.ts'
 import { DiffView } from './DiffView.tsx'
 
 type Props = { name: string; version: Version; onBack: () => void; onRestored: () => void; onError: (e: unknown) => void }
@@ -25,7 +25,7 @@ export function ViewingBar({ name, version, onBack, onRestored, onError }: Props
   }
   return (
     <div className="viewing-bar" role="status">
-      <span>Viewing {relativeTime(version.time_ms)} · {version.author}</span>
+      <span>Viewing {relativeTime(version.time_ms, useNow())} · {version.author}</span>
       <span className="spacer" />
       <button onClick={() => setDiffOpen(true)}>Show diff</button>
       <button onClick={doRestore} disabled={busy}>Restore</button>

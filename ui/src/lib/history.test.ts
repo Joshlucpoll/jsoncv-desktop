@@ -19,6 +19,9 @@ describe('groupVersions', () => {
     expect(groupVersions([v('You', 7), v('You', 1)])).toHaveLength(2)
     expect(groupVersions([v('You', 10), v('You', 6), v('You', 2)])).toHaveLength(1)
   })
+  it('returns [] for an empty list', () => expect(groupVersions([])).toEqual([]))
+  it('merges a gap of exactly windowMs', () => expect(groupVersions([v('You', 5), v('You', 0)])).toHaveLength(1))
+  it('does not merge out-of-order (negative gap) versions', () => expect(groupVersions([v('You', 1), v('You', 2)])).toHaveLength(2))
   it('labels a single version with its message', () => {
     expect(groupVersions([v('Agent', 1, 'tailor')])[0].label).toBe('Agent: tailor')
   })
@@ -33,6 +36,9 @@ describe('relativeTime', () => {
     expect(ago(60 * MIN)).toBe('1h')
     expect(ago(23 * 60 * MIN)).toBe('23h')
     expect(ago(2 * 86_400_000)).toBe('Mon')
+    expect(ago(-5 * MIN)).toBe('now') // future timestamp
+    expect(ago(7 * 86_400_000 - 1)).toBe('Wed')
+    expect(ago(7 * 86_400_000)).toBe('11 Nov')
     expect(ago(15 * 86_400_000)).toBe('3 Nov')
   })
 })

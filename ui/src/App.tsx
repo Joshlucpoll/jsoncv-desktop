@@ -10,7 +10,7 @@ export default function App() {
   const [cvs, setCvs] = useState<CvInfo[]>([])
   const [themes, setThemes] = useState<ThemeInfo[]>([])
   const [selected, setSelected] = useState('main')
-  const [viewing, setViewing] = useState<Version>() // past version shown in the preview; undefined = current
+  const [viewingState, setViewing] = useState<{ cv: string; version: Version }>() // past version shown in the preview; undefined = current
   const [reloadKey, setReloadKey] = useState(0)
   const [error, setError] = useState<string>()
   const [editing, setEditing] = useState(false)
@@ -19,8 +19,6 @@ export default function App() {
   const guarded = useCallback(async (go: () => void) => {
     if (!leaveRef.current || (await leaveRef.current())) go()
   }, [])
-  // Viewing a past version closes the edit panel first (through the guard).
-  const view = useCallback((v?: Version) => guarded(() => { setEditing(false); setViewing(v) }), [guarded])
   // cv/themes view (Task 15) is added with its feature.
 
   const fail = useCallback((e: unknown) => setError(errorMessage(e)), [])
@@ -44,21 +42,24 @@ export default function App() {
   // A CV removed outside the app falls back to main.
   const current = cvs.length && !cvs.some((c) => c.name === selected) ? 'main' : selected
   const cv = cvs.find((c) => c.name === current)
+  const viewing = viewingState?.cv === current ? viewingState.version : undefined // never apply CV A's commit to CV B
   // The watcher callback must see the latest selection without re-subscribing.
   useEffect(() => {
     selectedRef.current = current
   }, [current])
 
+  // Viewing a past version closes the edit panel first (through the guard).
+  const view = useCallback((v?: Version) => guarded(() => { setEditing(false); setViewing(v && { cv: current, version: v }) }), [guarded, current])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'e') {
         e.preventDefault()
-        void guarded(() => setEditing((v) => !v))
+        if (!viewing) void guarded(() => setEditing((v) => !v))
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [guarded])
+  }, [guarded, viewing])
 
   return (
     <div className="app">

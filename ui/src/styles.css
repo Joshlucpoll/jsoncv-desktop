@@ -188,4 +188,3 @@ button, select, input { font: inherit; color: inherit; }
 }
 .viewing-bar button { border: 1px solid var(--line); background: var(--ctl); border-radius: 6px; padding: 2px 9px; font-size: 12px; cursor: default; }
 .viewing-bar button:disabled { opacity: 0.45; }
-.diff-hunk { opacity: 0.6; }
