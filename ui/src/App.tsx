@@ -59,7 +59,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar cvs={cvs} selected={current} onSelect={(n) => void guarded(() => setSelected(n))} onChanged={reloadCvs} onError={fail} />
+      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => setSelected(n)))} onChanged={reloadCvs} onError={fail} />
       <main className="main">
         <Toolbar
           name={current}

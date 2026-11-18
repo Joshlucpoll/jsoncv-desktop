@@ -6,15 +6,18 @@ import CodeMirror from '@uiw/react-codemirror'
 import { json } from '@codemirror/lang-json'
 import { ask, open } from '@tauri-apps/plugin-dialog'
 import {
-  type ApiError, type SchemaError, addAssetFromPath, errorMessage, getSchema, history, onLibraryChanged, readCv, saveDraft,
+  MOCK, type ApiError, type SchemaError, addAssetFromPath, errorMessage, getSchema, history, onLibraryChanged, readCv, saveDraft,
 } from '../api.ts'
 import { ConflictBanner } from './ConflictBanner.tsx'
 import { DiffView } from './DiffView.tsx'
 
 const SAVE_DELAY_MS = 1000
 
-// Keys holding undefined are absent in JSON, so they do not count.
-const keys = (o: object) => Object.keys(o).filter((k) => (o as Record<string, unknown>)[k] !== undefined)
+// Object keys holding undefined are absent in JSON, so they do not count (array slots do).
+const keys = (o: object) => Object.keys(o).filter((k) => Array.isArray(o) || (o as Record<string, unknown>)[k] !== undefined)
+
+// The dialog plugin replaces window.confirm with an async version; the mock browser has no plugin.
+const confirmLeave = (msg: string) => (MOCK ? Promise.resolve(window.confirm(msg)) : ask(msg, { title: 'Unsaved changes', kind: 'warning' }))
 
 function same(a: unknown, b: unknown): boolean {
   if (a === b) return true
@@ -168,10 +171,11 @@ export function EditPanel({ name, onClose, onError, leaveRef }: Props) {
         setSaveError(undefined)
         setServerErrors(undefined)
         // The save merged other edits into the file; show the merged result and rebase on it.
-        if (diskChanged.current && draftRef.current === sent) {
+        if (diskChanged.current && draftRef.current === sent && !jsonErrRef.current) {
           diskChanged.current = false
           const [doc, h] = await Promise.all([readCv(name), history(name, 1).catch(() => [])])
-          if (draftRef.current === sent && doc.base !== lastBase.current) applyDisk(doc.cv, doc.base, h[0]?.commit)
+          // Saved.base hashes the merged bytes, so compare content, not hashes.
+          if (draftRef.current === sent && !jsonErrRef.current && !same(doc.cv, sent)) applyDisk(doc.cv, doc.base, h[0]?.commit)
         }
       } catch (e) {
         const err = e as ApiError
@@ -250,16 +254,16 @@ export function EditPanel({ name, onClose, onError, leaveRef }: Props) {
       for (let i = 0; i < 3 && unsavedDraft() && !conflictRef.current && !jsonErrRef.current && isValid(draftRef.current); i++) await flush()
       if (!dirty()) return true
       if (conflictRef.current || jsonErrRef.current || !isValid(draftRef.current)) {
-        return ask("You have unsaved changes that can't be saved yet. Discard them?", { title: 'Unsaved changes', kind: 'warning' })
+        return confirmLeave("You have unsaved changes that can't be saved yet. Discard them?")
       }
-      onError(lastError.current ?? "Couldn't save your changes")
-      return false
+      return confirmLeave(`Couldn't save: ${lastError.current ?? 'unknown error'}. Discard your changes?`)
     }
     return () => { leaveRef.current = null }
   }, [flush, leaveRef, onError])
 
   const discard = async () => {
     window.clearTimeout(timer.current)
+    timer.current = undefined
     conflictRef.current = false
     setConflict(false)
     setServerErrors(undefined)
