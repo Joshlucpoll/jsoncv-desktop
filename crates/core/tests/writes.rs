@@ -87,7 +87,7 @@ fn tailored_copy_records_origin() {
     let doc = lib.read_cv("tailored/stripe").unwrap();
     assert_eq!(doc.cv["meta"]["tailoredFrom"]["cv"], "main");
     assert!(d.path().join("tailored/stripe.cv.json").exists());
-    assert!(lib.create_tailored("stripe", "main", Author::You).is_err());
+    assert!(matches!(lib.create_tailored("stripe", "main", Author::You), Err(CoreError::BadName(_))));
     assert!(lib.create_tailored("Bad Slug", "main", Author::You).is_err());
 }
 
@@ -126,7 +126,10 @@ fn write_to_broken_file_refused() {
     let (d, lib) = setup();
     std::fs::write(d.path().join("main.cv.json"), "{").unwrap();
     let p = patch(json!([{"op":"replace","path":"/basics/name","value":"G"}]));
-    assert!(lib.patch_cv("main", &p, Author::Agent, None).is_err());
+    assert!(matches!(lib.patch_cv("main", &p, Author::Agent, None), Err(CoreError::Json(_))));
+    let cv = json!({"basics":{"name":"x"}});
+    assert!(matches!(lib.save_draft("main", &cv, &json!({"basics":{"name":"y"}})), Err(CoreError::Json(_))));
+    assert!(matches!(lib.set_cv_theme("main", "builtin:x", Author::You), Err(CoreError::Json(_))));
     assert_eq!(std::fs::read_to_string(d.path().join("main.cv.json")).unwrap(), "{");
 }
 
@@ -143,4 +146,23 @@ fn restore_adds_new_commit() {
     let h = lib.history("main", 50).unwrap();
     assert_eq!(h.len(), n + 1);
     assert_eq!(h[0].message, format!("Restored version {}", &old[..7]));
+}
+
+#[test]
+fn draft_tail_removal_detects_concurrent_edit() {
+    let (_d, lib) = setup();
+    let base = lib.read_cv("main").unwrap().cv;
+    let p = patch(json!([{"op":"replace","path":"/work/1/position","value":"AgentEdit"}]));
+    lib.patch_cv("main", &p, Author::Agent, None).unwrap();
+    let mut draft = base.clone();
+    draft["work"] = json!([]);
+    assert!(matches!(lib.save_draft("main", &base, &draft), Err(CoreError::PatchFailed(_))));
+    assert_eq!(lib.read_cv("main").unwrap().cv["work"][1]["position"], "AgentEdit");
+}
+
+#[test]
+fn gitignore_has_tmp_pattern() {
+    let (d, _lib) = setup();
+    let gi = std::fs::read_to_string(d.path().join(".gitignore")).unwrap();
+    assert!(gi.lines().any(|l| l == ".*.tmp-*"));
 }

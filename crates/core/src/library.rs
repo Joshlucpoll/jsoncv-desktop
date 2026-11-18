@@ -63,10 +63,15 @@ impl Library {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
             Err(e) => return Err(e.into()),
         };
-        if !cur.split(|b| *b == b'\n').any(|l| l == b"exports/") {
-            let sep = if cur.is_empty() || cur.ends_with(b"\n") { "" } else { "\n" };
-            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&gi)?;
-            std::io::Write::write_all(&mut f, format!("{sep}exports/\n").as_bytes())?;
+        let mut cur = cur;
+        for pat in ["exports/", ".*.tmp-*"] {
+            if !cur.split(|b| *b == b'\n').any(|l| l == pat.as_bytes()) {
+                if !cur.is_empty() && !cur.ends_with(b"\n") {
+                    cur.push(b'\n');
+                }
+                cur.extend_from_slice(format!("{pat}\n").as_bytes());
+                std::fs::write(&gi, &cur)?;
+            }
         }
         let fresh = !root.join(".git").exists();
         if fresh {
@@ -221,16 +226,20 @@ impl Library {
     pub fn save_draft(&self, name: &str, base_cv: &Value, draft: &Value) -> Result<Saved, CoreError> {
         let ops = serde_json::to_value(json_patch::diff(base_cv, draft))?;
         let ops = ops.as_array().cloned().unwrap_or_default();
-        // Guards first: each touched existing value must still equal what the user saw.
-        let mut all: Vec<Value> = ops
-            .iter()
-            .filter(|o| matches!(o["op"].as_str(), Some("replace" | "remove")))
-            .filter_map(|o| {
-                let path = o["path"].as_str()?;
-                Some(serde_json::json!({"op":"test","path":path,"value":base_cv.pointer(path)?}))
-            })
-            .collect();
-        all.extend(ops);
+        // Each replace/remove gets a test just before it, valued from base_cv with earlier ops applied
+        // (json-patch shifts array indices, so a single up-front guard would miss elements).
+        let mut work = base_cv.clone();
+        let mut all: Vec<Value> = vec![];
+        for o in ops {
+            if matches!(o["op"].as_str(), Some("replace" | "remove")) {
+                let path = o["path"].as_str().unwrap_or("");
+                let v = work.pointer(path).ok_or_else(|| CoreError::PatchFailed(format!("no value at {path}")))?;
+                all.push(serde_json::json!({"op":"test","path":path,"value":v}));
+            }
+            let one: json_patch::Patch = serde_json::from_value(Value::Array(vec![o.clone()]))?;
+            json_patch::patch(&mut work, &one).map_err(|e| CoreError::PatchFailed(e.to_string()))?;
+            all.push(o);
+        }
         let patch: json_patch::Patch = serde_json::from_value(Value::Array(all))?;
         self.patch_cv(name, &patch, Author::You, None)
     }
@@ -313,14 +322,17 @@ impl Library {
 
     pub fn set_cv_theme(&self, name: &str, theme_id: &str, author: Author) -> Result<Saved, CoreError> {
         // Theme existence is checked once themes land (Task 6).
-        let doc = self.read_cv(name)?;
-        let op = if doc.cv["meta"].is_object() {
-            serde_json::json!([{"op":"add","path":"/meta/theme","value":theme_id}])
-        } else {
-            serde_json::json!([{"op":"add","path":"/meta","value":{"theme":theme_id}}])
-        };
-        let patch: json_patch::Patch = serde_json::from_value(op)?;
-        self.patch_cv(name, &patch, author, Some(&format!("Theme set to {theme_id}")))
+        with_lock(&self.root, || {
+            self.sweep_external()?;
+            let mut cv = self.read_cv(name)?.cv;
+            let obj = cv.as_object_mut().ok_or_else(|| CoreError::PatchFailed("CV is not an object".into()))?;
+            obj.entry("meta")
+                .or_insert_with(|| serde_json::json!({}))
+                .as_object_mut()
+                .ok_or_else(|| CoreError::PatchFailed("meta is not an object".into()))?
+                .insert("theme".into(), theme_id.into());
+            self.write_locked(name, &cv, author, &format!("Theme set to {theme_id}"))
+        })
     }
 }
 
