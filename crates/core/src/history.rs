@@ -7,7 +7,7 @@ use serde_json::Value;
 use crate::{library::Library, schema, Author, CoreError};
 
 /// Exclusive lock on `.git/jsoncv.lock`; retries every 50 ms for up to 2 s.
-/// Public (not `pub(crate)`) so integration tests can reach it.
+#[doc(hidden)]
 pub fn with_lock<T>(root: &Path, f: impl FnOnce() -> Result<T, CoreError>) -> Result<T, CoreError> {
     let file = std::fs::OpenOptions::new()
         .create(true)
@@ -30,22 +30,53 @@ pub fn with_lock<T>(root: &Path, f: impl FnOnce() -> Result<T, CoreError>) -> Re
     }
 }
 
-/// Stage `paths` (removal if gone) and commit. Returns "" when nothing changed.
-/// Public so integration tests can reach it.
+/// Commit only `paths` (removal if gone) on top of HEAD; other staged files are untouched.
+/// Returns "" when nothing changed. Public so integration tests can reach it.
+#[doc(hidden)]
 pub fn commit(root: &Path, paths: &[&Path], author: Author, message: &str) -> Result<String, CoreError> {
     let repo = git2::Repository::open(root)?;
-    let mut idx = repo.index()?;
+    let parent = match repo.head() {
+        Ok(h) => Some(h.peel_to_commit()?),
+        Err(e) if e.code() == git2::ErrorCode::UnbornBranch => None,
+        Err(e) => return Err(e.into()),
+    };
+    let mut mem = git2::Index::new()?;
+    if let Some(p) = &parent {
+        mem.read_tree(&p.tree()?)?;
+    }
+    let mut real = repo.index()?;
     for p in paths {
         let rel = p.strip_prefix(root).unwrap_or(p);
-        if root.join(rel).exists() {
-            idx.add_path(rel)?;
-        } else if idx.get_path(rel, 0).is_some() {
-            idx.remove_path(rel)?;
+        let full = root.join(rel);
+        if full.exists() {
+            let id = repo.blob(&std::fs::read(&full)?)?;
+            let path = rel.to_string_lossy().replace('\\', "/").into_bytes();
+            mem.add(&git2::IndexEntry {
+                ctime: git2::IndexTime::new(0, 0),
+                mtime: git2::IndexTime::new(0, 0),
+                dev: 0,
+                ino: 0,
+                mode: 0o100644,
+                uid: 0,
+                gid: 0,
+                file_size: 0,
+                id,
+                flags: path.len().min(0xFFF) as u16,
+                flags_extended: 0,
+                path,
+            })?;
+            real.add_path(rel)?;
+        } else {
+            if mem.get_path(rel, 0).is_some() {
+                mem.remove_path(rel)?;
+            }
+            if real.get_path(rel, 0).is_some() {
+                real.remove_path(rel)?;
+            }
         }
     }
-    idx.write()?;
-    let tree_id = idx.write_tree()?;
-    let parent = repo.head().ok().map(|h| h.peel_to_commit()).transpose()?;
+    real.write()?;
+    let tree_id = mem.write_tree_to(&repo)?;
     if parent.as_ref().is_some_and(|p| p.tree_id() == tree_id) {
         return Ok(String::new());
     }
@@ -53,6 +84,20 @@ pub fn commit(root: &Path, paths: &[&Path], author: Author, message: &str) -> Re
     let tree = repo.find_tree(tree_id)?;
     let parents: Vec<&git2::Commit> = parent.iter().collect();
     Ok(repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)?.to_string())
+}
+
+/// True when the file parses as JSON and passes the schema.
+pub(crate) fn cv_valid(path: &Path) -> bool {
+    std::fs::read(path)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .is_some_and(|v| schema::validate(&v).is_ok())
+}
+
+fn resolve<'a>(repo: &'a git2::Repository, commit: &str) -> Result<git2::Commit<'a>, CoreError> {
+    repo.revparse_single(commit)
+        .and_then(|o| o.peel_to_commit())
+        .map_err(|_| CoreError::NotFound(format!("commit {commit}")))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -101,14 +146,8 @@ impl Library {
                 continue;
             }
             let full = self.root().join(p);
-            if p.ends_with(".cv.json") && full.exists() {
-                let ok = std::fs::read(&full)
-                    .ok()
-                    .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-                    .is_some_and(|v| schema::validate(&v).is_ok());
-                if !ok {
-                    continue;
-                }
+            if p.ends_with(".cv.json") && full.exists() && !cv_valid(&full) {
+                continue;
             }
             paths.push(std::path::PathBuf::from(p));
         }
@@ -154,7 +193,7 @@ impl Library {
     pub fn read_cv_at(&self, name: &str, commit: &str) -> Result<Value, CoreError> {
         self.cv_path(name)?;
         let repo = git2::Repository::open(self.root())?;
-        let tree = repo.revparse_single(commit)?.peel_to_commit()?.tree()?;
+        let tree = resolve(&repo, commit)?.tree()?;
         let entry = tree
             .get_path(Path::new(&format!("{name}.cv.json")))
             .map_err(|_| CoreError::NotFound(format!("{name} at {commit}")))?;
@@ -166,7 +205,8 @@ impl Library {
     pub fn diff(&self, name: &str, commit: &str) -> Result<String, CoreError> {
         let old = pretty(&self.read_cv_at(name, commit)?)?;
         let new = pretty(&self.read_cv(name)?.cv)?;
-        let short = &commit[..commit.len().min(7)];
+        let id = resolve(&git2::Repository::open(self.root())?, commit)?.id().to_string();
+        let short = &id[..7];
         let d = similar::TextDiff::from_lines(&old, &new).unified_diff().header(short, "current").to_string();
         Ok(d)
     }

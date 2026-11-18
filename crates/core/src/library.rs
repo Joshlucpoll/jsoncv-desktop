@@ -68,7 +68,10 @@ impl Library {
         let lib = Library { root: root.to_path_buf() };
         if fresh {
             // shortcut: stages only main + .gitignore; other pre-existing files are left to the sweep.
-            let paths = [Path::new("main.cv.json"), Path::new(".gitignore")];
+            let mut paths = vec![Path::new(".gitignore")];
+            if crate::history::cv_valid(&main) {
+                paths.push(Path::new("main.cv.json"));
+            }
             crate::history::with_lock(root, || crate::history::commit(root, &paths, Author::You, "Create library"))?;
         }
         Ok(lib)

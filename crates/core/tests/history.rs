@@ -113,3 +113,44 @@ fn lock_times_out() {
     h.join().unwrap().unwrap();
     with_lock(d.path(), || Ok(())).unwrap();
 }
+
+#[test]
+fn commit_ignores_unrelated_staged_files() {
+    let d = TempDir::new().unwrap();
+    Library::open(d.path()).unwrap();
+    std::fs::write(d.path().join("notes.txt"), "hi").unwrap();
+    let r = git2::Repository::open(d.path()).unwrap();
+    let mut idx = r.index().unwrap();
+    idx.add_path(Path::new("notes.txt")).unwrap();
+    idx.write().unwrap();
+    std::fs::write(d.path().join("main.cv.json"), cv("Ada")).unwrap();
+    commit(d.path(), &[Path::new("main.cv.json")], Author::You, "edit").unwrap();
+    let tree = r.head().unwrap().peel_to_commit().unwrap().tree().unwrap();
+    assert!(tree.get_path(Path::new("notes.txt")).is_err());
+    assert!(tree.get_path(Path::new("main.cv.json")).is_ok());
+    // still staged, and main is clean
+    assert!(r.status_file(Path::new("notes.txt")).unwrap().contains(git2::Status::INDEX_NEW));
+    assert!(r.status_file(Path::new("main.cv.json")).unwrap().is_empty());
+}
+
+#[test]
+fn sweep_stages_deletion() {
+    let d = TempDir::new().unwrap();
+    let lib = Library::open(d.path()).unwrap();
+    std::fs::write(d.path().join("themes/t.html"), "x").unwrap();
+    lib.sweep_external_locked().unwrap().unwrap();
+    std::fs::remove_file(d.path().join("themes/t.html")).unwrap();
+    assert!(lib.sweep_external_locked().unwrap().is_some());
+    let r = git2::Repository::open(d.path()).unwrap();
+    let tree = r.head().unwrap().peel_to_commit().unwrap().tree().unwrap();
+    assert!(tree.get_path(Path::new("themes/t.html")).is_err());
+}
+
+#[test]
+fn unknown_commit_is_not_found() {
+    let d = TempDir::new().unwrap();
+    let lib = Library::open(d.path()).unwrap();
+    let bad = "0123456789abcdef0123456789abcdef01234567";
+    assert!(matches!(lib.read_cv_at("main", bad), Err(CoreError::NotFound(_))));
+    assert!(matches!(lib.diff("main", bad), Err(CoreError::NotFound(_))));
+}

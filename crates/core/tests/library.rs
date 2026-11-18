@@ -105,3 +105,15 @@ fn list_reports_missing_main() {
     assert_eq!(l[0].name, "main");
     assert_eq!(l[0].error.as_deref(), Some("main.cv.json is missing"));
 }
+
+#[test]
+fn open_does_not_commit_invalid_main() {
+    let d = TempDir::new().unwrap();
+    std::fs::write(d.path().join("main.cv.json"), "{").unwrap();
+    Library::open(d.path()).unwrap();
+    let r = git2::Repository::open(d.path()).unwrap();
+    let tree = r.head().unwrap().peel_to_commit().unwrap().tree().unwrap();
+    assert!(tree.get_path(std::path::Path::new("main.cv.json")).is_err());
+    assert!(tree.get_path(std::path::Path::new(".gitignore")).is_ok());
+    assert_eq!(std::fs::read(d.path().join("main.cv.json")).unwrap(), b"{");
+}
