@@ -18,6 +18,7 @@ regex = "1"
 base64 = "0.23"
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 minijinja = { version = "3", features = ["serde", "preserve_order"] }
-
-[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] }
+chromiumoxide = { version = "0.9", default-features = false }
+futures-util = "0.3"
 tempfile = "3"

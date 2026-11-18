@@ -257,16 +257,25 @@ impl Library {
             Some(sha) => self.read_cv_at(name, sha)?,
             None => self.read_cv(name)?.cv,
         };
+        let id = self.resolve_theme(&cv, theme)?;
+        self.render(&cv, &id)
+    }
+
+    /// The theme id `render_cv` uses for the current CV: explicit, else `meta.theme`, else classic.
+    pub fn effective_theme(&self, name: &str, theme: Option<&str>) -> Result<String, CoreError> {
+        self.resolve_theme(&self.read_cv(name)?.cv, theme)
+    }
+
+    fn resolve_theme(&self, cv: &serde_json::Value, theme: Option<&str>) -> Result<String, CoreError> {
         if let Some(id) = theme {
-            return self.render(&cv, id);
+            return Ok(id.to_string());
         }
         let id = cv["meta"]["theme"].as_str().unwrap_or("builtin:classic");
-        match self.render(&cv, id) {
+        match self.get_theme(id) {
             // Only a stale or hand-edited meta.theme falls back; an explicit choice reports its error.
-            Err(CoreError::NotFound(_) | CoreError::BadName(_)) if id != "builtin:classic" => {
-                self.render(&cv, "builtin:classic")
-            }
-            r => r,
+            Err(CoreError::NotFound(_) | CoreError::BadName(_)) if id != "builtin:classic" => Ok("builtin:classic".into()),
+            Err(e) => Err(e),
+            Ok(_) => Ok(id.to_string()),
         }
     }
 }
