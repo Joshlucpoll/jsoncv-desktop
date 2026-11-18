@@ -22,7 +22,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-const INSTRUCTIONS: &str = "Edit jsoncv CVs. Read jsoncv://schema before editing and jsoncv://theme-guide before writing themes. Prefer update_cv (JSON Patch) for small edits. After save_theme, fix every render_error and consider every missing field. Use preview to see your theme.";
+const INSTRUCTIONS: &str = "Edit jsoncv CVs. Read jsoncv://schema before editing and jsoncv://theme-guide before writing themes. Prefer update_cv (JSON Patch) for small edits. After save_theme, fix every render_error and consider every missing field. Use preview to see your theme. Before an index-based array edit (such as /work/1/url), add a `test` op on that element so the patch fails if the array changed.";
 
 const RESOURCES: [(&str, &str, &str, &str); 3] = [
     ("jsoncv://schema", "schema", "application/json", SCHEMA),
