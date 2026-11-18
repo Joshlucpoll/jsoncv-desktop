@@ -1,5 +1,6 @@
 pub mod assets;
 pub mod config;
+pub mod coverage;
 pub mod error;
 pub mod history;
 pub mod library;

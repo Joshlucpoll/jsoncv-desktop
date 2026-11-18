@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use minijinja::{Environment, Value};
@@ -6,8 +6,10 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::assets::{inline_cv_assets, inline_theme_assets};
+use crate::coverage::{missing_fields, ThemeReport};
+use crate::history::{commit, with_lock};
 use crate::library::Library;
-use crate::CoreError;
+use crate::{Author, CoreError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PageSize {
@@ -160,6 +162,63 @@ impl Library {
         })
     }
 
+    pub fn theme_report(&self, id: &str) -> Result<ThemeReport, CoreError> {
+        report(&self.get_theme(id)?.template)
+    }
+
+    pub fn save_theme(
+        &self,
+        id: &str,
+        template: &str,
+        css: &str,
+        meta: &ThemeMeta,
+        author: Author,
+    ) -> Result<ThemeReport, CoreError> {
+        if id.starts_with("builtin:") {
+            return Err(CoreError::ReadOnly(format!("{id} is a built-in theme; duplicate it to edit")));
+        }
+        let dir = self.theme_dir(id)?;
+        let meta_json = serde_json::to_string_pretty(meta)? + "\n";
+        with_lock(self.root(), || {
+            self.sweep_external()?;
+            std::fs::create_dir_all(&dir)?;
+            let files = [("template.html.j2", template), ("style.css", css), ("theme.json", meta_json.as_str())];
+            for (f, body) in files {
+                write_atomic(&dir.join(f), body.as_bytes())?;
+            }
+            let rels: Vec<String> = files.iter().map(|(f, _)| format!("themes/{id}/{f}")).collect();
+            let paths: Vec<&Path> = rels.iter().map(Path::new).collect();
+            commit(self.root(), &paths, author, &format!("Saved theme {id}"))?;
+            Ok(())
+        })?;
+        report(template)
+    }
+
+    pub fn duplicate_theme(&self, id: &str, new_id: &str, author: Author) -> Result<ThemeInfo, CoreError> {
+        let src = self.get_theme(id)?;
+        let dir = self.theme_dir(new_id)?;
+        with_lock(self.root(), || {
+            self.sweep_external()?;
+            if dir.exists() {
+                return Err(CoreError::BadName(format!("Theme {new_id} already exists")));
+            }
+            std::fs::create_dir_all(&dir)?;
+            let meta = ThemeMeta { name: format!("{} copy", src.info.meta.name), ..src.info.meta.clone() };
+            write_atomic(&dir.join("template.html.j2"), src.template.as_bytes())?;
+            write_atomic(&dir.join("style.css"), src.css.as_bytes())?;
+            write_atomic(&dir.join("theme.json"), (serde_json::to_string_pretty(&meta)? + "\n").as_bytes())?;
+            let mut rels = vec!["template.html.j2".to_string(), "style.css".into(), "theme.json".into()];
+            if !src.info.builtin {
+                copy_tree(&self.theme_dir(id)?.join("assets"), &dir.join("assets"), "assets", &mut rels)?;
+            }
+            let rels: Vec<String> = rels.iter().map(|r| format!("themes/{new_id}/{r}")).collect();
+            let paths: Vec<&Path> = rels.iter().map(Path::new).collect();
+            commit(self.root(), &paths, author, &format!("Duplicated theme {id} as {new_id}"))?;
+            Ok(())
+        })?;
+        Ok(self.get_theme(new_id)?.info)
+    }
+
     pub fn render(&self, cv: &serde_json::Value, theme_id: &str) -> Result<String, CoreError> {
         let theme = self.get_theme(theme_id)?;
         let (mut template, mut css) = (theme.template, theme.css);
@@ -172,15 +231,7 @@ impl Library {
         inline_cv_assets(&mut cv, self.root());
         let body = environment()
             .render_str(&template, minijinja::context! { cv => Value::from(minijinja::value::Serde(&cv)) })
-            .map_err(|e| {
-                CoreError::Render(RenderError {
-                    message: match e.detail() {
-                        Some(d) => format!("{}: {d}", e.kind()),
-                        None => e.kind().to_string(),
-                    },
-                    line: e.line(),
-                })
-            })?;
+            .map_err(render_error)?;
         static STYLE_END: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)</style").unwrap());
         static HEAD_END: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)</head>").unwrap());
         let style = format!("<style>{}</style>", STYLE_END.replace_all(&css, r"<\/style"));
@@ -209,6 +260,60 @@ impl Library {
             r => r,
         }
     }
+}
+
+fn report(template: &str) -> Result<ThemeReport, CoreError> {
+    match missing_fields(template) {
+        Ok(missing) => Ok(ThemeReport { render_error: None, missing }),
+        Err(CoreError::Render(e)) => Ok(ThemeReport { render_error: Some(e), missing: vec![] }),
+        Err(e) => Err(e),
+    }
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let tmp = path.with_file_name(format!(".{}.tmp-{}", path.file_name().unwrap().to_string_lossy(), std::process::id()));
+    let res = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        std::io::Write::write_all(&mut f, bytes)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, path)
+    })();
+    if res.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    res
+}
+
+/// Copies `src` into `dst` if it exists, pushing each file's path (relative to the theme dir) onto `rels`.
+fn copy_tree(src: &Path, dst: &Path, rel: &str, rels: &mut Vec<String>) -> std::io::Result<()> {
+    let rd = match std::fs::read_dir(src) {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    std::fs::create_dir_all(dst)?;
+    for e in rd {
+        let e = e?;
+        let name = e.file_name();
+        let r = format!("{rel}/{}", name.to_string_lossy());
+        if e.file_type()?.is_dir() {
+            copy_tree(&e.path(), &dst.join(&name), &r, rels)?;
+        } else {
+            std::fs::copy(e.path(), dst.join(&name))?;
+            rels.push(r);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn render_error(e: minijinja::Error) -> CoreError {
+    CoreError::Render(RenderError {
+        message: match e.detail() {
+            Some(d) => format!("{}: {d}", e.kind()),
+            None => e.kind().to_string(),
+        },
+        line: e.line(),
+    })
 }
 
 pub(crate) fn environment() -> Environment<'static> {
