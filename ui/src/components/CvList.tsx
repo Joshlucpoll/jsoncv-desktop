@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
-import { type CvInfo, createTailored, deleteCv, renameCv } from '../api.ts'
+import { useEffect, useRef, useState } from 'react'
+import { confirm } from '@tauri-apps/plugin-dialog'
+import { type CvInfo, MOCK, createTailored, deleteCv, errorMessage, renameCv } from '../api.ts'
 
-type Props = { cvs: CvInfo[]; selected: string; onSelect: (n: string) => void; onChanged: () => void; onError: (e: unknown) => void }
+type Props = { cvs: CvInfo[]; selected: string; onSelect: (n: string) => void; onChanged: () => Promise<unknown>; onError: (e: unknown) => void }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/
 const slugOf = (name: string) => name.replace(/^tailored\//, '')
@@ -14,7 +15,7 @@ function SlugInput({ initial, onSubmit, onCancel }: { initial: string; onSubmit:
     try {
       await onSubmit(v)
     } catch (e) {
-      setErr(typeof e === 'object' && e && 'message' in e ? String(e.message) : String(e))
+      setErr(errorMessage(e))
     }
   }
   return (
@@ -38,18 +39,43 @@ export function CvList({ cvs, selected, onSelect, onChanged, onError }: Props) {
   const [creating, setCreating] = useState(false)
   const [renaming, setRenaming] = useState<string>()
 
+  const menuEl = useRef<HTMLDivElement>(null)
+  const returnTo = useRef<HTMLElement | null>(null)
+  const closeMenu = (refocus: boolean) => {
+    setMenu(undefined)
+    if (refocus) returnTo.current?.focus()
+  }
+  const openMenu = (el: HTMLElement, x: number, y: number, name: string) => {
+    returnTo.current = el
+    setMenu({ x, y, name })
+  }
+
   useEffect(() => {
     if (!menu) return
+    menuEl.current?.querySelector('button')?.focus()
     const close = () => setMenu(undefined)
     window.addEventListener('click', close)
     window.addEventListener('blur', close)
-    window.addEventListener('keydown', close)
     return () => {
       window.removeEventListener('click', close)
       window.removeEventListener('blur', close)
-      window.removeEventListener('keydown', close)
     }
   }, [menu])
+
+  const onMenuKey = (e: React.KeyboardEvent) => {
+    const items = [...menuEl.current!.querySelectorAll('button')]
+    const i = items.indexOf(document.activeElement as HTMLButtonElement)
+    if (e.key === 'Escape') closeMenu(true)
+    else if (e.key === 'Tab') { e.preventDefault(); closeMenu(true) }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus() }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus() }
+  }
+
+  // Await the list reload first so the new name exists when it is selected.
+  const select = async (name: string) => {
+    await onChanged()
+    onSelect(name)
+  }
 
   const main = cvs.filter((c) => !c.tailored_from && !c.name.startsWith('tailored/'))
   const tailored = cvs.filter((c) => !main.includes(c))
@@ -63,8 +89,8 @@ export function CvList({ cvs, selected, onSelect, onChanged, onError }: Props) {
         onSubmit={async (s) => {
           const r = await renameCv(c.name, s)
           setRenaming(undefined)
-          if (selected === c.name) onSelect(r.name)
-          onChanged()
+          if (selected === c.name) await select(r.name)
+          else await onChanged()
         }}
       />
     ) : (
@@ -75,11 +101,17 @@ export function CvList({ cvs, selected, onSelect, onChanged, onError }: Props) {
         onContextMenu={(e) => {
           if (!nested) return
           e.preventDefault()
-          setMenu({ x: e.clientX, y: e.clientY, name: c.name })
+          openMenu(e.currentTarget, e.clientX, e.clientY, c.name)
+        }}
+        onKeyDown={(e) => {
+          if (!nested || !(e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) return
+          e.preventDefault()
+          const r = e.currentTarget.getBoundingClientRect()
+          openMenu(e.currentTarget, r.left + 24, r.bottom, c.name)
         }}
       >
         <span className="label">{nested ? slugOf(c.name) : 'Main CV'}</span>
-        {c.error && <span className="badge" title={c.error}>⚠</span>}
+        {c.error && <span className="badge" title={c.error} role="img" aria-label={`Error: ${c.error}`}>⚠</span>}
       </button>
     )
 
@@ -95,26 +127,30 @@ export function CvList({ cvs, selected, onSelect, onChanged, onError }: Props) {
           onSubmit={async (s) => {
             const r = await createTailored(s, 'main')
             setCreating(false)
-            onSelect(r.name)
-            onChanged()
+            await select(r.name)
           }}
         />
       ) : (
         <button className="item add" onClick={() => setCreating(true)}>+ New tailored CV…</button>
       )}
       {menu && (
-        <div className="menu" style={{ left: menu.x, top: menu.y }} role="menu">
+        <div className="menu" ref={menuEl} onKeyDown={onMenuKey} style={{ left: menu.x, top: menu.y }} role="menu">
           <button role="menuitem" onClick={() => setRenaming(menu.name)}>Rename…</button>
           <button
             role="menuitem"
             className="danger"
-            onClick={() => {
+            onClick={async () => {
               const name = menu.name
-              if (!window.confirm(`Delete "${slugOf(name)}"? It stays in the library's Git history.`)) return
-              deleteCv(name).then(() => {
+              const msg = `Delete "${slugOf(name)}"? It stays in the library's Git history.`
+              // The dialog plugin replaces window.confirm with an async version, so use its confirm().
+              if (!(MOCK ? window.confirm(msg) : await confirm(msg, { title: 'Delete CV', kind: 'warning' }))) return
+              try {
+                await deleteCv(name)
                 if (selected === name) onSelect('main')
-                onChanged()
-              }, onError)
+                await onChanged()
+              } catch (e) {
+                onError(e)
+              }
             }}
           >
             Delete…

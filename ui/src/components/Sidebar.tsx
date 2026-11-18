@@ -1,7 +1,7 @@
 import type { CvInfo } from '../api.ts'
 import { CvList } from './CvList.tsx'
 
-type Props = { cvs: CvInfo[]; selected: string; onSelect: (n: string) => void; onChanged: () => void; onError: (e: unknown) => void }
+type Props = { cvs: CvInfo[]; selected: string; onSelect: (n: string) => void; onChanged: () => Promise<unknown>; onError: (e: unknown) => void }
 
 export function Sidebar(p: Props) {
   return (

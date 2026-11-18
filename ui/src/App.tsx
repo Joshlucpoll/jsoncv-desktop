@@ -48,10 +48,7 @@ export default function App() {
           theme={cv?.theme ?? null}
           themes={themes}
           onTheme={(id) =>
-            setCvTheme(current, id).then(() => {
-              reloadCvs()
-              setReloadKey((k) => k + 1)
-            }, fail)
+            setCvTheme(current, id).then(reloadCvs, fail)
           }
         />
         {error && (
