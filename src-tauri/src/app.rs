@@ -66,14 +66,44 @@ pub fn open_with_fallback(
 
 /// Event the UI answers by running its unsaved-draft guard, then calling `exit_app`.
 pub const QUIT_REQUESTED: &str = "app-quit-requested";
+/// Event carrying a menu command id (`new-cv`, `edit`, `export-pdf`, `print`, `settings`) for the UI.
+pub const MENU_COMMAND: &str = "menu-command";
+/// Menu items the UI handles; the ids are also the `MENU_COMMAND` payloads.
+#[cfg(target_os = "macos")]
+const UI_COMMANDS: [(&str, &str, &str); 4] = [
+    ("new-cv", "New Tailored CV…", "CmdOrCtrl+N"),
+    ("edit", "Edit CV", "CmdOrCtrl+E"),
+    ("export-pdf", "Export PDF", "CmdOrCtrl+Shift+E"),
+    ("print", "Print…", "CmdOrCtrl+P"),
+];
 
 /// The macOS default menu, with Quit (⌘Q) routed through the UI. The stock Quit item calls
 /// NSApp `terminate:`, which exits without any Tauri event, so unsaved edits could not be saved.
 #[cfg(target_os = "macos")]
 fn guarded_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
-    use tauri::menu::{Menu, MenuItem};
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     let menu = Menu::default(app)?;
-    if let Some(app_menu) = menu.items()?.first().and_then(|i| i.as_submenu().cloned()) {
+    let submenus: Vec<_> = menu
+        .items()?
+        .iter()
+        .filter_map(|i| i.as_submenu().cloned())
+        .collect();
+    // File menu: the UI commands above the stock Close Window.
+    if let Some(file) = submenus
+        .iter()
+        .find(|m| m.text().is_ok_and(|t| t == "File"))
+    {
+        for (i, (id, label, accel)) in UI_COMMANDS.iter().enumerate() {
+            file.insert(&MenuItem::with_id(app, *id, *label, true, Some(*accel))?, i)?;
+        }
+        file.insert(&PredefinedMenuItem::separator(app)?, UI_COMMANDS.len())?;
+    }
+    if let Some(app_menu) = submenus.first() {
+        // After "About …" and its separator.
+        app_menu.insert(
+            &MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?,
+            2,
+        )?;
         if let Some(quit) = app_menu.items()?.last() {
             app_menu.remove(quit)?;
         }
@@ -94,10 +124,14 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     let builder = builder.menu(guarded_menu);
     builder
-        .on_menu_event(|app, e| {
-            if e.id() == "quit" {
+        .on_menu_event(|app, e| match e.id().as_ref() {
+            "quit" => {
                 let _ = app.emit(QUIT_REQUESTED, ());
             }
+            id @ ("new-cv" | "edit" | "export-pdf" | "print" | "settings") => {
+                let _ = app.emit(MENU_COMMAND, id);
+            }
+            _ => {}
         })
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -115,7 +149,7 @@ pub fn run() {
             let lib = ctx.app_handle().state::<AppState>().lib();
             let uri = req.uri().to_string();
             tauri::async_runtime::spawn_blocking(move || {
-                let html = render_preview(&lib, &uri);
+                let html = render_uri(&lib, &uri);
                 let res = Response::builder()
                     .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
                     .header(header::CONTENT_SECURITY_POLICY, PREVIEW_CSP)
@@ -134,6 +168,8 @@ pub fn run() {
             commands::delete_cv,
             commands::history,
             commands::diff,
+            commands::change_diff,
+            commands::preview_html,
             commands::restore,
             commands::list_themes,
             commands::theme_report,
@@ -165,7 +201,7 @@ pub fn preview_url(name: &str) -> Url {
     url
 }
 
-fn render_preview(lib: &Library, uri: &str) -> String {
+fn render_uri(lib: &Library, uri: &str) -> String {
     let (mut cv, mut theme, mut commit) = (None, None, None);
     if let Ok(url) = Url::parse(uri) {
         for (k, v) in url.query_pairs() {
@@ -180,20 +216,30 @@ fn render_preview(lib: &Library, uri: &str) -> String {
     let Some(cv) = cv else {
         return error_page("Missing cv parameter", None);
     };
-    let theme = theme.as_deref().filter(|s| !s.is_empty());
-    let commit = commit.as_deref().filter(|s| !s.is_empty());
+    render_preview(lib, &cv, theme.as_deref(), commit.as_deref())
+}
+
+/// The preview page for a CV: rendered HTML, the last saved version with a notice, or an error page.
+pub fn render_preview(
+    lib: &Library,
+    cv: &str,
+    theme: Option<&str>,
+    commit: Option<&str>,
+) -> String {
+    let theme = theme.filter(|s| !s.is_empty());
+    let commit = commit.filter(|s| !s.is_empty());
     // Spec §5.3: a file broken outside the app shows its last committed (valid) version plus a notice.
     let broken = commit.is_none()
-        && match lib.read_cv(&cv) {
+        && match lib.read_cv(cv) {
             Err(CoreError::Json(_)) => true,
             Ok(doc) => jsoncv_core::schema::validate(&doc.cv).is_err(),
             Err(_) => false,
         };
     let res = if broken {
-        lib.render_cv(&cv, theme, Some("HEAD"))
+        lib.render_cv(cv, theme, Some("HEAD"))
             .map(|html| with_notice(&html))
     } else {
-        lib.render_cv(&cv, theme, commit)
+        lib.render_cv(cv, theme, commit)
     };
     match res {
         Ok(html) => html,
@@ -347,9 +393,9 @@ mod tests {
     fn preview_renders_and_reports_errors() {
         let dir = tempfile::tempdir().unwrap();
         let lib = Library::open(dir.path()).unwrap();
-        let ok = render_preview(&lib, preview_url("main").as_str());
+        let ok = render_uri(&lib, preview_url("main").as_str());
         assert!(!ok.contains("Cannot render"), "{ok}");
-        let bad = render_preview(
+        let bad = render_uri(
             &lib,
             "http://jsoncv-preview.localhost/render?cv=tailored%2Fnope",
         );
@@ -357,7 +403,7 @@ mod tests {
             bad.contains("Cannot render") && bad.contains("tailored/nope"),
             "{bad}"
         );
-        assert!(render_preview(&lib, "jsoncv-preview://localhost/render").contains("Missing cv"));
+        assert!(render_uri(&lib, "jsoncv-preview://localhost/render").contains("Missing cv"));
     }
 
     #[test]
@@ -366,7 +412,7 @@ mod tests {
         let lib = Library::open(dir.path()).unwrap();
         let url = preview_url("main");
         std::fs::write(dir.path().join("main.cv.json"), "{").unwrap();
-        let page = render_preview(&lib, url.as_str());
+        let page = render_uri(&lib, url.as_str());
         assert!(
             page.contains("Mara Lindqvist") && page.contains("showing the last saved version"),
             "{page}"
@@ -376,7 +422,7 @@ mod tests {
             r#"{"basics":{"name":"Broken"},"work":[{"startDate":"March"}]}"#,
         )
         .unwrap();
-        let page = render_preview(&lib, url.as_str());
+        let page = render_uri(&lib, url.as_str());
         assert!(
             page.contains("Mara Lindqvist") && !page.contains("Broken"),
             "{page}"

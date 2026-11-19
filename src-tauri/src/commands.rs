@@ -145,6 +145,30 @@ pub async fn diff(state: State<'_, AppState>, name: String, commit: String) -> R
 }
 
 #[tauri::command]
+pub async fn change_diff(state: State<'_, AppState>, name: String, commit: String) -> Res<String> {
+    with_lib(&state, move |l| l.change_diff(&name, &commit)).await
+}
+
+#[tauri::command]
+pub async fn preview_html(
+    state: State<'_, AppState>,
+    cv: String,
+    theme: Option<String>,
+    commit: Option<String>,
+) -> Res<String> {
+    let lib = state.lib();
+    blocking(move || {
+        Ok(crate::app::render_preview(
+            &lib,
+            &cv,
+            theme.as_deref(),
+            commit.as_deref(),
+        ))
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn restore(state: State<'_, AppState>, name: String, commit: String) -> Res<Saved> {
     with_lib(&state, move |l| l.restore(&name, &commit, Author::You)).await
 }

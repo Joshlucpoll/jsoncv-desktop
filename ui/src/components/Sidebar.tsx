@@ -2,6 +2,8 @@ import type { CvInfo, ThemeInfo, Version } from '../api.ts'
 import { CvList } from './CvList.tsx'
 import { HistoryList } from './HistoryList.tsx'
 import { ThemeList } from './ThemesView.tsx'
+import { Icon } from './Icon.tsx'
+import { MOD } from '../lib/platform.ts'
 
 export type View = 'cvs' | 'themes'
 
@@ -9,7 +11,7 @@ type Props = {
   cvs: CvInfo[]; selected: string; onSelect: (n: string) => void; onChanged: () => Promise<unknown>; onLeaveSelected: () => Promise<boolean>; onError: (e: unknown) => void
   reloadKey: number; viewing?: string; onView: (v?: Version) => void
   view: View; onViewMode: (v: View) => void
-  themes: ThemeInfo[]; theme?: string; onTheme: (id: string) => void; onSettings: () => void
+  themes: ThemeInfo[]; theme?: string; onTheme: (id: string) => void; onSettings: () => void; newSignal: number
 }
 
 export function Sidebar({ reloadKey, viewing, onView, view, onViewMode, themes, theme, onTheme, onSettings, ...p }: Props) {
@@ -29,7 +31,7 @@ export function Sidebar({ reloadKey, viewing, onView, view, onViewMode, themes, 
         <ThemeList themes={themes} selected={theme} onSelect={onTheme} />
       )}
       <div className="sidebar-foot">
-        <button className="gear" aria-label="Settings" title="Settings" onClick={onSettings}>⚙ Settings</button>
+        <button className="gear" title={`Settings (${MOD},)`} onClick={onSettings}><Icon name="gear" /> Settings</button>
       </div>
     </aside>
   )

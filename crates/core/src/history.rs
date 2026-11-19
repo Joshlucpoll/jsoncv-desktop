@@ -140,6 +140,13 @@ fn canonical(v: &Value) -> Value {
     }
 }
 
+fn unified(old: &str, new: &str, from: &str, to: &str) -> String {
+    similar::TextDiff::from_lines(old, new)
+        .unified_diff()
+        .header(from, to)
+        .to_string()
+}
+
 fn pretty(v: &Value) -> Result<String, CoreError> {
     Ok(serde_json::to_string_pretty(&canonical(v))? + "\n")
 }
@@ -226,11 +233,24 @@ impl Library {
         let id = resolve(&git2::Repository::open(self.root())?, commit)?
             .id()
             .to_string();
-        let short = &id[..7];
-        let d = similar::TextDiff::from_lines(&old, &new)
-            .unified_diff()
-            .header(short, "current")
+        Ok(unified(&old, &new, &id[..7], "current"))
+    }
+
+    /// What `commit` changed in this CV: the file's previous version (empty if none) against `commit`.
+    pub fn change_diff(&self, name: &str, commit: &str) -> Result<String, CoreError> {
+        let id = resolve(&git2::Repository::open(self.root())?, commit)?
+            .id()
             .to_string();
-        Ok(d)
+        let new = pretty(&self.read_cv_at(name, &id)?)?;
+        let versions = self.history(name, usize::MAX)?;
+        let prev = versions
+            .iter()
+            .position(|v| v.commit == id)
+            .and_then(|i| versions.get(i + 1));
+        let (old, from) = match prev {
+            Some(p) => (pretty(&self.read_cv_at(name, &p.commit)?)?, &p.commit[..7]),
+            None => (String::new(), "empty"),
+        };
+        Ok(unified(&old, &new, from, &id[..7]))
     }
 }

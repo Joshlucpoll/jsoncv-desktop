@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Form from '@rjsf/core'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import validator from '@rjsf/validator-ajv8'
-import type { IconButtonProps, ObjectFieldTemplateProps, RJSFSchema, UiSchema, WidgetProps } from '@rjsf/utils'
+import type { RJSFSchema } from '@rjsf/utils'
 import CodeMirror from '@uiw/react-codemirror'
 import { json } from '@codemirror/lang-json'
-import { ask, open } from '@tauri-apps/plugin-dialog'
+import { ask } from '@tauri-apps/plugin-dialog'
 import {
-  MOCK, type ApiError, type SchemaError, addAssetFromPath, errorMessage, getSchema, history, onLibraryChanged, readCv, saveDraft,
+  MOCK, type ApiError, type SchemaError, errorMessage, getSchema, history, onLibraryChanged, readCv, saveDraft,
 } from '../api.ts'
+import { shrank } from '../lib/form.ts'
 import { ConflictBanner } from './ConflictBanner.tsx'
+import { CvForm } from './CvForm.tsx'
 import { DiffView } from './DiffView.tsx'
 
 const SAVE_DELAY_MS = 1000
@@ -26,70 +27,18 @@ function same(a: unknown, b: unknown): boolean {
   return ka.length === keys(b).length && ka.every((k) => same((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
 }
 
-function ObjectFieldTemplate({ fieldPathId, title, properties }: ObjectFieldTemplateProps) {
-  const body = properties.filter((p) => !p.hidden).map((p) => <div key={p.name} className="prop">{p.content}</div>)
-  const depth = fieldPathId.path.length
-  if (depth === 0) return <>{body}</>
-  if (depth === 1) {
-    return (
-      <details className="section" open={fieldPathId.path[0] === 'basics'}>
-        <summary>{title}</summary>
-        <div className="section-body">{body}</div>
-      </details>
-    )
+const WIDTH_KEY = 'jsoncv.editWidth'
+const readWidth = () => {
+  try {
+    return Number(localStorage.getItem(WIDTH_KEY)) || 380
+  } catch {
+    return 380
   }
-  return (
-    <fieldset className="nested">
-      <legend>{title}</legend>
-      {body}
-    </fieldset>
-  )
 }
+const clampWidth = (w: number) => Math.round(Math.min(Math.max(w, 320), window.innerWidth * 0.6))
 
-function ImageWidget({ id, value, onChange, disabled, readonly }: WidgetProps) {
-  const [err, setErr] = useState<string>()
-  const choose = async () => {
-    try {
-      const path = await open({ filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }] })
-      if (typeof path === 'string') onChange(await addAssetFromPath(path))
-      setErr(undefined)
-    } catch (e) {
-      setErr(errorMessage(e))
-    }
-  }
-  return (
-    <div className="image-widget">
-      <div className="row">
-        <input id={id} type="text" value={value ?? ''} disabled={disabled} readOnly={readonly} onChange={(e) => onChange(e.target.value || undefined)} />
-        <button type="button" disabled={disabled || readonly} onClick={choose}>Choose file…</button>
-      </div>
-      {err && <div className="field-error">{err}</div>}
-    </div>
-  )
-}
-
-const uiSchema: UiSchema = {
-  'ui:title': '',
-  'ui:description': '',
-  $schema: { 'ui:widget': 'hidden' },
-  basics: { image: { 'ui:widget': 'imageFile' }, summary: { 'ui:widget': 'textarea' } },
-}
-// The default theme's icons are a glyph font we do not ship; use text.
-const textButton = (label: string) =>
-  function TextButton({ id, title, disabled, onClick }: IconButtonProps) {
-    return <button type="button" id={id} title={title} aria-label={title} disabled={disabled} onClick={onClick}>{label}</button>
-  }
-const templates = {
-  ObjectFieldTemplate,
-  ButtonTemplates: {
-    AddButton: textButton('+ Add'),
-    RemoveButton: textButton('✕'),
-    MoveUpButton: textButton('↑'),
-    MoveDownButton: textButton('↓'),
-  },
-}
-const widgets = { imageFile: ImageWidget }
-const dark = matchMedia('(prefers-color-scheme: dark)').matches
+const darkQuery = matchMedia('(prefers-color-scheme: dark)')
+const useDark = () => useSyncExternalStore((cb) => { darkQuery.addEventListener('change', cb); return () => darkQuery.removeEventListener('change', cb) }, () => darkQuery.matches)
 
 type Props = {
   name: string
@@ -114,6 +63,10 @@ export function EditPanel({ name, onClose, leaveRef, saveRef }: Props) {
   const [loadCommit, setLoadCommit] = useState<string>()
   const [diffOpen, setDiffOpen] = useState(false)
   const [pending, setPending] = useState(false)
+  const [undo, setUndo] = useState<{ prev: unknown }>() // offered after a list item is removed
+  const [width, setWidth] = useState(() => clampWidth(readWidth()))
+  const dark = useDark()
+  const fresh = useRef(false) // false while the form's first render runs, so existing cards start closed
 
   const baseRef = useRef<unknown>(undefined)
   const draftRef = useRef<unknown>(undefined)
@@ -330,31 +283,72 @@ export function EditPanel({ name, onClose, leaveRef, saveRef }: Props) {
     setTab(t)
   }
 
+  const onFormChange = useCallback((next: unknown) => {
+    if (shrank(draftRef.current, next)) setUndo({ prev: draftRef.current })
+    onDraft(next)
+  }, [onDraft])
+  useEffect(() => {
+    if (!undo) return
+    const t = setTimeout(() => setUndo(undefined), 8000)
+    return () => clearTimeout(t)
+  }, [undo])
+  useEffect(() => {
+    fresh.current = tab === 'form' && !!schema && draft !== undefined
+  }, [tab, schema, draft])
+
+  const errors = useMemo(
+    () => (schema && draft !== undefined ? (validator.rawValidation(schema, draft).errors ?? []).map((e) => (e as { instancePath?: string }).instancePath ?? '') : []),
+    [schema, draft],
+  )
+  const showFirstError = () => {
+    const el = document.getElementById(`root_${errors[0]?.split('/')[1] ?? ''}`)
+    if (el instanceof HTMLDetailsElement) el.open = true
+    el?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }
+
   const unsaved = pending || !!jsonError || (base !== undefined && !same(draft, base))
+  const nErr = errors.length
+  const status = base === undefined ? undefined
+    : jsonError ? { kind: 'error', text: 'Not saved: invalid JSON' }
+    : conflict ? { kind: 'error', text: 'Not saved: conflict' }
+    : nErr ? { kind: 'error', text: `Not saved: ${nErr} error${nErr === 1 ? '' : 's'}`, onClick: tab === 'form' ? showFirstError : undefined }
+    : saveError || serverErrors ? { kind: 'error', text: "Couldn't save" }
+    : unsaved ? { kind: 'busy', text: 'Saving…' }
+    : { kind: 'ok', text: 'Saved' }
+
   const form = useMemo(
-    () =>
-      schema && draft !== undefined ? (
-        <Form
-          schema={schema}
-          uiSchema={uiSchema}
-          formData={draft}
-          validator={validator}
-          templates={templates}
-          widgets={widgets}
-          liveValidate
-          noHtml5Validate
-          showErrorList={false}
-          tagName="div"
-          onChange={(e) => onDraft(e.formData)}
-        />
-      ) : null,
-    [schema, draft, onDraft],
+    () => (schema && draft !== undefined ? <CvForm schema={schema} draft={draft} errors={errors} fresh={fresh} onChange={onFormChange} /> : null),
+    [schema, draft, errors, onFormChange],
   )
 
+  const resize = (w: number) => {
+    const next = clampWidth(w)
+    setWidth(next)
+    try { localStorage.setItem(WIDTH_KEY, String(next)) } catch { /* storage unavailable: width is not remembered */ }
+  }
+  const onHandleDown = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const el = e.currentTarget as HTMLElement
+    el.setPointerCapture(e.pointerId)
+    const move = (ev: PointerEvent) => resize(window.innerWidth - ev.clientX)
+    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up) }
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+  }
+
   return (
-    <aside className="edit">
+    <aside className="edit" style={{ width }}>
+      <div
+        className="resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize edit panel" tabIndex={0}
+        aria-valuenow={width} aria-valuemin={320}
+        onPointerDown={onHandleDown}
+        onKeyDown={(e) => { if (e.key === 'ArrowLeft') resize(width + 16); else if (e.key === 'ArrowRight') resize(width - 16) }}
+      />
       <header>
-        <strong>Edit{unsaved && <i className="dot" title="Unsaved changes" />}</strong>
+        <strong>Edit</strong>
+        {status && (status.onClick
+          ? <button className={`status ${status.kind}`} onClick={status.onClick} title="Show the first error">{status.text}</button>
+          : <span className={`status ${status.kind}`} role="status">{status.text}</span>)}
         <div className="tabs" role="tablist">
           <button role="tab" aria-selected={tab === 'form'} onClick={() => switchTab('form')}>Form</button>
           <button role="tab" aria-selected={tab === 'json'} onClick={() => switchTab('json')}>JSON</button>
@@ -368,6 +362,12 @@ export function EditPanel({ name, onClose, leaveRef, saveRef }: Props) {
       {serverErrors && (
         <div className="banner" role="alert">
           <span>{serverErrors.map((e) => `${e.path || '/'}: ${e.message}`).join('\n')}</span>
+        </div>
+      )}
+      {undo && (
+        <div className="banner ok" role="status">
+          <span>Item removed</span>
+          <button className="link" onClick={() => { onDraft(undo.prev); setUndo(undefined) }}>Undo</button>
         </div>
       )}
       <div className="edit-body">

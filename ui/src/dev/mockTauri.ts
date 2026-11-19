@@ -1,4 +1,5 @@
 // DEV ONLY: lets the UI run in a plain browser at /?mock for screenshots.
+import { emit } from '@tauri-apps/api/event'
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks'
 import schema from '../../../crates/core/schema/jsoncv.schema.json'
 import type { CvInfo, ThemeInfo } from '../api.ts'
@@ -65,6 +66,8 @@ mockIPC(
       case 'history': return [...versions]
       case 'restore': versions.unshift({ commit: `r${versions.length}`, author: 'You', message: 'Restore version', time_ms: Date.now() }); return { commit: 'r', base: 'h3' }
       case 'diff': return '--- a/main.cv.json\n+++ b/main.cv.json\n@@ -2,3 +2,3 @@\n   "basics": {\n-    "name": "Ada Lovelace",\n+    "name": "Ada King",\n     "label": "Mathematician"'
+      case 'change_diff': return '--- empty\n+++ v3\n@@ -5,1 +5,1 @@\n-    "summary": "Engineer."\n+    "summary": "Engineer who ships payments infrastructure."'
+      case 'preview_html': return fetch('/dev-preview.html').then((r) => r.text())
       case 'save_draft': return { commit: 'c1', base: 'h2' }
       case 'add_asset_from_path': return 'assets/photo.png'
       case 'plugin:dialog|open': return a?.options && (a.options as unknown as { directory?: boolean }).directory ? '/Users/me/Library/Mobile Documents/CVs' : '/tmp/photo.png'
@@ -74,3 +77,9 @@ mockIPC(
   { shouldMockEvents: true },
 )
 mockWindows('main') // getCurrentWindow() needs window metadata
+
+// Simulates an agent edit over MCP: run __mockAgentEdit() in the console.
+;(window as unknown as { __mockAgentEdit: () => void }).__mockAgentEdit = () => {
+  versions.unshift(ver(`a${versions.length}`, 'Agent', 'Tightened summary', 0))
+  void emit('library-changed', { paths: ['main.cv.json'] })
+}

@@ -35,6 +35,11 @@ export function relativeTime(ms: number, now = Date.now(), locale?: string): str
   return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' }).format(ms)
 }
 
+/** "Tue 18 Nov, 14:02" */
+export function absoluteTime(ms: number, locale?: string): string {
+  return new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(ms)
+}
+
 /** Re-renders every `ms` so relative labels stay fresh. */
 export function useNow(ms = 60_000): number {
   const [now, setNow] = useState(Date.now)

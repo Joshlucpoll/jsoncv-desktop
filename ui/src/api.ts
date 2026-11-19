@@ -29,6 +29,10 @@ export const renameCv = (name: string, newSlug: string) => invoke<CvInfo>('renam
 export const deleteCv = (name: string) => invoke<void>('delete_cv', { name })
 export const history = (name: string, limit: number) => invoke<Version[]>('history', { name, limit })
 export const diff = (name: string, commit: string) => invoke<string>('diff', { name, commit })
+/** What `commit` changed: the CV's previous version against `commit`. */
+export const changeDiff = (name: string, commit: string) => invoke<string>('change_diff', { name, commit })
+/** The rendered preview page (or an error page) as HTML, for an iframe's srcdoc. */
+export const previewHtml = (cv: string, theme?: string, commit?: string) => invoke<string>('preview_html', { cv, theme: theme ?? null, commit: commit ?? null })
 export const restore = (name: string, commit: string) => invoke<Saved>('restore', { name, commit })
 export const listThemes = () => invoke<ThemeInfo[]>('list_themes')
 export const themeReport = (id: string) => invoke<ThemeReport>('theme_report', { id })
@@ -47,18 +51,12 @@ export const exitApp = () => invoke<void>('exit_app')
 /** Returns the unlisten function. */
 export const onLibraryChanged = async (cb: (paths: string[]) => void) =>
   listen<{ paths: string[] }>('library-changed', (e) => cb(e.payload.paths))
+export type MenuCommand = 'new-cv' | 'edit' | 'export-pdf' | 'print' | 'settings'
+/** A File or app menu item (macOS). Returns the unlisten function. */
+export const onMenuCommand = (cb: (c: MenuCommand) => void) => listen<MenuCommand>('menu-command', (e) => cb(e.payload))
 /** ⌘Q on macOS (the app menu's Quit). Returns the unlisten function. */
 export const onQuitRequested = (cb: () => void) => listen('app-quit-requested', cb)
 /** Window close; the window is destroyed after `cb` unless it calls preventDefault. */
 export const onCloseRequested = (cb: (e: CloseRequestedEvent) => Promise<void>) => getCurrentWindow().onCloseRequested(cb)
 
-export function previewUrl(cv: string, theme?: string, commit?: string): string {
-  if (MOCK) return '/dev-preview.html'
-  const q = new URLSearchParams({ cv })
-  if (theme) q.set('theme', theme)
-  if (commit) q.set('commit', commit)
-  return /windows/i.test(navigator.userAgent)
-    ? `http://jsoncv-preview.localhost/render?${q}`
-    : `jsoncv-preview://localhost/render?${q}`
-}
 export const getSchema = () => invoke<Record<string, unknown>>('get_schema')

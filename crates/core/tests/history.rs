@@ -136,6 +136,29 @@ fn diff_shows_changed_field() {
 }
 
 #[test]
+fn change_diff_shows_only_that_commit() {
+    let d = TempDir::new().unwrap();
+    let lib = Library::open(d.path()).unwrap();
+    let main = Path::new("main.cv.json");
+    std::fs::write(d.path().join("main.cv.json"), cv("Ada")).unwrap();
+    commit(d.path(), &[main], Author::You, "ada").unwrap();
+    std::fs::write(d.path().join("main.cv.json"), cv("Grace")).unwrap();
+    let mid = commit(d.path(), &[main], Author::Agent, "grace").unwrap();
+    std::fs::write(d.path().join("main.cv.json"), cv("Hedy")).unwrap();
+    commit(d.path(), &[main], Author::You, "hedy").unwrap();
+    let diff = lib.change_diff("main", &mid).unwrap();
+    assert!(diff.contains("-    \"name\": \"Ada\""), "{diff}");
+    assert!(diff.contains("+    \"name\": \"Grace\""), "{diff}");
+    assert!(!diff.contains("Hedy"), "{diff}");
+    // The file's first version diffs against nothing; history may hold an earlier sample commit.
+    let oldest = lib.history("main", 100).unwrap().pop().unwrap().commit;
+    assert!(lib
+        .change_diff("main", &oldest)
+        .unwrap()
+        .contains("--- empty"));
+}
+
+#[test]
 fn lock_times_out() {
     let d = TempDir::new().unwrap();
     Library::open(d.path()).unwrap();
