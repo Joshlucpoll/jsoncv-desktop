@@ -118,7 +118,10 @@ button, select, input { font: inherit; color: inherit; }
   display: flex; align-items: center; gap: 8px; height: 44px; flex: none; padding: 0 14px;
   background: var(--bar); border-bottom: 1px solid var(--line);
 }
-.toolbar h1 { margin: 0; font-size: 13px; font-weight: 600; }
+.toolbar h1 { margin: 0; font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toolbar > * { flex: none; }
+.toolbar > h1, .toolbar > .spacer { flex: 0 1 auto; }
+.toolbar > .spacer { flex-grow: 1; }
 .spacer { flex: 1; }
 .toolbar button, .toolbar select {
   height: 24px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--line);
@@ -136,14 +139,15 @@ button, select, input { font: inherit; color: inherit; }
 .banner span { flex: 1; user-select: text; }
 .link { border: 0; background: none; color: var(--accent); cursor: pointer; }
 
-.preview-wrap { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; }
+/* Room for the page plus the zoom bar without it wrapping; the edit panel shrinks first. */
+.preview-wrap { flex: 1; min-width: 360px; position: relative; display: flex; flex-direction: column; }
 .preview { flex: 1; overflow: hidden; background: var(--canvas); padding: 24px 24px 64px; user-select: none; cursor: grab; }
 .preview.grabbing { cursor: grabbing; }
 .paper { transform-origin: 0 0; background: #fff; box-shadow: var(--shadow); border-radius: 2px; position: relative; }
 .page-break { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed rgba(0, 0, 0, 0.3); pointer-events: auto; }
 .page-break span { position: absolute; right: 6px; top: 2px; font: 600 10px/1.4 -apple-system, sans-serif; color: rgba(0, 0, 0, 0.45); background: #fff; padding: 0 4px; border-radius: 3px; }
 .preview-bar {
-  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px;
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; white-space: nowrap;
   padding: 3px 6px; background: var(--ctl); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow); font-size: 12px;
 }
 .preview-bar .pages { padding: 0 6px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -158,9 +162,16 @@ button, select, input { font: inherit; color: inherit; }
 /* Edit panel */
 .workspace { flex: 1; min-height: 0; display: flex; }
 .workspace .preview { flex: 1; min-width: 0; }
-.toolbar button.on { background: var(--accent-bg); }
+.toolbar button.on { background: var(--accent-bg); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); }
+.toolbar { gap: 6px; }
+.toolbar button.with-icon { display: inline-flex; align-items: center; gap: 5px; }
+.toolbar button.icon-only { width: 26px; padding: 0; justify-content: center; }
+.toolbar .theme-trigger > .icon:first-child, .toolbar .with-icon:not(.on) > .icon { color: var(--muted); }
+.toolbar button.primary { background: var(--accent); border-color: transparent; color: #fff; font-weight: 500; }
+.toolbar button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.tb-sep { width: 1px; height: 16px; background: var(--line); margin: 0 2px; }
 .edit {
-  flex: none; display: flex; flex-direction: column; min-height: 0;
+  flex: 0 1 auto; min-width: 320px; display: flex; flex-direction: column; min-height: 0;
   background: var(--bg); border-left: 1px solid var(--line); position: relative;
 }
 .edit > header { display: flex; align-items: center; gap: 8px; height: 38px; flex: none; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--bar); }

@@ -41,8 +41,8 @@ function ExportMenu({ busy, onExport, onPrint }: { busy: boolean; onExport: (f: 
   const pick = (go: () => void) => () => { setOpen(false); go() }
   return (
     <div className="popup" ref={box} onKeyDown={onKeyDown}>
-      <button className="trigger" aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen((o) => !o)}>
-        {busy ? <><span className="spinner" aria-hidden="true" /> Exporting…</> : <>Export <Icon name="chevronDown" size={12} /></>}
+      <button className="trigger primary" aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen((o) => !o)}>
+        {busy ? <><span className="spinner" aria-hidden="true" /> Exporting…</> : <><Icon name="download" /> Export <Icon name="chevronDown" size={12} /></>}
       </button>
       {open && (
         <div className="menu" role="menu">
@@ -63,8 +63,8 @@ function OptionsMenu({ json, onJson, continuous, onPageMode }: Pick<Props, 'json
   const pick = (go: () => void) => () => { setOpen(false); go() }
   return (
     <div className="popup" ref={box} onKeyDown={onKeyDown}>
-      <button className="trigger" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        Options <Icon name="chevronDown" size={12} />
+      <button className="trigger icon-only" aria-haspopup="menu" aria-expanded={open} aria-label="Options" title="Options" onClick={() => setOpen((o) => !o)}>
+        <Icon name="sliders" />
       </button>
       {open && (
         <div className="menu options-menu" role="menu" aria-label="Options">
@@ -104,8 +104,8 @@ function ThemePicker({ cv, value, themes, onPick, onManage }: { cv: string; valu
   const pick = (id: string) => { setOpen(false); if (id !== value) onPick(id) }
   return (
     <div className="popup" ref={box} onKeyDown={onKeyDown}>
-      <button className="trigger theme-trigger" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <span className="muted">Theme</span> {current?.meta.name ?? value} <Icon name="chevronDown" size={12} />
+      <button className="trigger theme-trigger" aria-haspopup="menu" aria-expanded={open} title="Theme" onClick={() => setOpen((o) => !o)}>
+        <Icon name="palette" /> {current?.meta.name ?? value} <Icon name="chevronDown" size={12} />
       </button>
       {open && (
         <div className="menu theme-menu" role="menu" aria-label="Theme">
@@ -138,9 +138,11 @@ export function Toolbar({ name, theme, themes, onTheme, onManageThemes, editing,
     <header className="toolbar" data-tauri-drag-region>
       <h1 data-tauri-drag-region>{cvTitle(name)}</h1>
       <span className="spacer" data-tauri-drag-region />
-      <ThemePicker cv={name} value={theme ?? DEFAULT_THEME} themes={themes} onPick={onTheme} onManage={onManageThemes} />
+      {/* Least to most important, left to right: the primary action sits at the edge. */}
       <OptionsMenu json={json} onJson={onJson} continuous={continuous} onPageMode={onPageMode} />
-      <button className={editing ? 'on' : undefined} aria-pressed={editing} onClick={onEdit}>Edit <kbd>{MOD}E</kbd></button>
+      <ThemePicker cv={name} value={theme ?? DEFAULT_THEME} themes={themes} onPick={onTheme} onManage={onManageThemes} />
+      <span className="tb-sep" aria-hidden="true" />
+      <button className={`with-icon${editing ? ' on' : ''}`} aria-pressed={editing} title={`Edit (${MOD}E)`} onClick={onEdit}><Icon name="pencil" />Edit</button>
       <ExportMenu busy={exporting} onExport={onExport} onPrint={onPrint} />
     </header>
   )

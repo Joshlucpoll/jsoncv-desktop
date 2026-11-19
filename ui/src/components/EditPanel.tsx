@@ -36,7 +36,8 @@ const readWidth = () => {
     return 440
   }
 }
-const clampWidth = (w: number) => Math.round(Math.min(Math.max(w, 320), window.innerWidth * 0.6))
+// 600 = the 240px sidebar + the preview's 360px minimum (styles.css).
+const clampWidth = (w: number) => Math.round(Math.max(320, Math.min(w, window.innerWidth * 0.6, window.innerWidth - 600)))
 
 const darkQuery = matchMedia('(prefers-color-scheme: dark)')
 const useDark = () => useSyncExternalStore((cb) => { darkQuery.addEventListener('change', cb); return () => darkQuery.removeEventListener('change', cb) }, () => darkQuery.matches)
