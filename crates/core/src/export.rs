@@ -49,7 +49,7 @@ pub fn find_browser() -> Option<PathBuf> {
         first_existing(
             ["ProgramFiles", "ProgramFiles(x86)", "LocalAppData"]
                 .iter()
-                .filter_map(|v| std::env::var_os(v))
+                .filter_map(std::env::var_os)
                 .flat_map(|base| rels.iter().map(move |r| PathBuf::from(&base).join(r))),
         )
     } else {

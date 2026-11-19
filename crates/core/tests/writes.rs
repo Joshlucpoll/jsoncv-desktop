@@ -102,26 +102,9 @@ fn draft_detects_shifted_array() {
 }
 
 #[test]
-fn tailored_copy_records_origin() {
+fn rename_and_delete_cv() {
     let (d, lib) = setup();
-    let info = lib.create_tailored("stripe", "my-cv", Author::You).unwrap();
-    assert_eq!(info.name, "stripe");
-    let doc = lib.read_cv("stripe").unwrap();
-    assert_eq!(doc.cv["meta"]["tailoredFrom"]["cv"], "my-cv");
-    assert!(d.path().join("cvs/stripe.cv.json").exists());
-    assert!(matches!(
-        lib.create_tailored("stripe", "my-cv", Author::You),
-        Err(CoreError::BadName(_))
-    ));
-    assert!(lib
-        .create_tailored("Bad Slug", "my-cv", Author::You)
-        .is_err());
-}
-
-#[test]
-fn rename_and_delete_tailored() {
-    let (d, lib) = setup();
-    lib.create_tailored("a", "my-cv", Author::You).unwrap();
+    lib.duplicate_cv("a", "my-cv", Author::You).unwrap();
     let info = lib.rename_cv("a", "b", Author::You).unwrap();
     assert_eq!(info.name, "b");
     assert!(!d.path().join("cvs/a.cv.json").exists());
@@ -131,14 +114,14 @@ fn rename_and_delete_tailored() {
     let h = lib.history("b", 5).unwrap();
     assert_eq!(h[0].message, "Deleted b");
     // The rename carried the creation row along, and the old name has no history left.
-    assert_eq!(h.last().unwrap().message, "Created a from my-cv");
+    assert_eq!(h.last().unwrap().message, "Duplicated my-cv as a");
     assert!(lib.history("a", 5).unwrap().is_empty());
     assert!(matches!(
         lib.read_cv_at("b", &h[0].commit),
         Err(CoreError::NotFound(_))
     ));
     // Recreating the slug keeps the old versions under it.
-    lib.create_tailored("b", "my-cv", Author::You).unwrap();
+    lib.duplicate_cv("b", "my-cv", Author::You).unwrap();
     assert_eq!(lib.history("b", 10).unwrap().len(), h.len() + 1);
 }
 

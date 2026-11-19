@@ -1,4 +1,4 @@
-use jsoncv_core::{library::Library, schema, CoreError};
+use jsoncv_core::{library::Library, CoreError};
 use tempfile::TempDir;
 
 #[test]

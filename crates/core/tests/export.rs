@@ -37,7 +37,7 @@ async fn html_export_is_self_contained() {
 #[tokio::test]
 async fn export_uses_effective_theme_and_flattens_name() {
     let (d, lib) = lib_with_photo();
-    lib.create_tailored("acme", "my-cv", Author::You).unwrap();
+    lib.duplicate_cv("acme", "my-cv", Author::You).unwrap();
     let p = lib.export("acme", ExportFormat::Html, None).await.unwrap();
     assert_eq!(p, d.path().join("exports/acme-classic.html"));
     let g = lib.export("acme", ExportFormat::Json, None).await.unwrap();

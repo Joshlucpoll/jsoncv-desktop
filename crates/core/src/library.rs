@@ -331,7 +331,7 @@ impl Library {
             let mut f = std::fs::File::create(&tmp)?;
             std::io::Write::write_all(&mut f, &bytes)?;
             f.sync_all()?;
-            std::fs::rename(&tmp, &path)
+            std::fs::rename(&tmp, path)
         })();
         if let Err(e) = res {
             let _ = std::fs::remove_file(&tmp);
@@ -467,42 +467,127 @@ impl Library {
         self.write_validated(name, &cv, author, &format!("Restored version v{id}"))
     }
 
-    pub fn create_tailored(
+    /// Copies `from` as `slug`, into the same folder. The copy is independent of `from`.
+    pub fn duplicate_cv(
         &self,
         slug: &str,
         from: &str,
         author: Author,
     ) -> Result<CvInfo, CoreError> {
-        let name = slug.to_string();
         self.locked(|tx| {
             self.sweep_external(tx)?;
+            let cv = self.read_cv(from)?.cv;
             let folder = self.folder_of(&self.cv_path(from)?);
             let target = self.new_cv_path(slug, folder.as_deref())?;
-            let mut cv = self.read_cv(from)?.cv;
-            let head = self
-                .head(tx, from)?
-                .map(|i| i.to_string())
-                .unwrap_or_default();
-            cv.as_object_mut()
-                .ok_or_else(|| CoreError::PatchFailed("CV is not an object".into()))?
-                .entry("meta")
-                .or_insert_with(|| serde_json::json!({}))
-                .as_object_mut()
-                .ok_or_else(|| CoreError::PatchFailed("meta is not an object".into()))?
-                .insert(
-                    "tailoredFrom".into(),
-                    serde_json::json!({"cv": from, "commit": head}),
-                );
+            std::fs::create_dir_all(target.parent().unwrap())?;
             self.write_locked(
                 tx,
                 &target,
-                &name,
+                slug,
                 &cv,
                 author,
-                &format!("Created {name} from {from}"),
+                &format!("Duplicated {from} as {slug}"),
             )
         })?;
-        self.info(&name)
+        self.info(slug)
+    }
+
+    /// A new, empty CV (`{}`) named `slug`.
+    pub fn create_cv(
+        &self,
+        slug: &str,
+        folder: Option<&str>,
+        author: Author,
+    ) -> Result<CvInfo, CoreError> {
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
+            let target = self.new_cv_path(slug, folder)?;
+            std::fs::create_dir_all(target.parent().unwrap())?;
+            self.write_locked(
+                tx,
+                &target,
+                slug,
+                &serde_json::json!({}),
+                author,
+                &format!("Created {slug}"),
+            )
+        })?;
+        self.info(slug)
+    }
+
+    /// Moves CV `name` into `folder` (None: the top of `cvs/`). Its name and history are unchanged.
+    pub fn move_cv(&self, name: &str, folder: Option<&str>) -> Result<CvInfo, CoreError> {
+        let dir = self.folder_dir(folder)?;
+        self.locked(|_| {
+            let old = self.cv_path(name)?;
+            if !old.exists() {
+                return Err(CoreError::NotFound(name.into()));
+            }
+            let new = dir.join(format!("{name}.cv.json"));
+            if new == old {
+                return Ok(());
+            }
+            if new.exists() {
+                return Err(CoreError::BadName(format!("{name} is already there")));
+            }
+            std::fs::create_dir_all(&dir)?;
+            std::fs::rename(&old, &new)?;
+            Ok(())
+        })?;
+        self.info(name)
+    }
+
+    fn folder_dir(&self, folder: Option<&str>) -> Result<PathBuf, CoreError> {
+        match folder {
+            None => Ok(self.cvs_dir()),
+            Some(f) if valid_slug(f) => Ok(self.cvs_dir().join(f)),
+            Some(f) => Err(CoreError::BadName(f.into())),
+        }
+    }
+
+    pub fn create_folder(&self, name: &str) -> Result<(), CoreError> {
+        let dir = self.folder_dir(Some(name))?;
+        self.locked(|_| {
+            if dir.exists() {
+                return Err(CoreError::BadName(format!("Folder {name} already exists")));
+            }
+            Ok(std::fs::create_dir(&dir)?)
+        })
+    }
+
+    /// Renames a folder; the CVs inside keep their names and history.
+    pub fn rename_folder(&self, name: &str, new_name: &str) -> Result<(), CoreError> {
+        let old = self.folder_dir(Some(name))?;
+        let new = self.folder_dir(Some(new_name))?;
+        self.locked(|_| {
+            if !old.is_dir() {
+                return Err(CoreError::NotFound(format!("folder {name}")));
+            }
+            if new.exists() {
+                return Err(CoreError::BadName(format!(
+                    "Folder {new_name} already exists"
+                )));
+            }
+            Ok(std::fs::rename(&old, &new)?)
+        })
+    }
+
+    /// Deletes an empty folder (a Finder `.DS_Store` does not count).
+    pub fn delete_folder(&self, name: &str) -> Result<(), CoreError> {
+        let dir = self.folder_dir(Some(name))?;
+        self.locked(|_| {
+            if !dir.is_dir() {
+                return Err(CoreError::NotFound(format!("folder {name}")));
+            }
+            let others = std::fs::read_dir(&dir)?
+                .filter_map(Result::ok)
+                .any(|e| e.file_name() != ".DS_Store");
+            if others {
+                return Err(CoreError::BadName(format!("Folder {name} is not empty")));
+            }
+            let _ = std::fs::remove_file(dir.join(".DS_Store"));
+            Ok(std::fs::remove_dir(&dir)?)
+        })
     }
 
     fn info(&self, name: &str) -> Result<CvInfo, CoreError> {
@@ -519,9 +604,6 @@ impl Library {
         author: Author,
     ) -> Result<CvInfo, CoreError> {
         let old = self.cv_path(name)?;
-        if name == "main" {
-            return Err(CoreError::ReadOnly("main cannot be renamed".into()));
-        }
         let new_name = new_slug.to_string();
         self.locked(|tx| {
             self.sweep_external(tx)?;
@@ -549,11 +631,11 @@ impl Library {
 
     pub fn delete_cv(&self, name: &str, author: Author) -> Result<(), CoreError> {
         let path = self.cv_path(name)?;
-        if name == "main" {
-            return Err(CoreError::ReadOnly("main cannot be deleted".into()));
-        }
         self.locked(|tx| {
             self.sweep_external(tx)?;
+            if path.exists() && self.cv_entries()?.len() <= 1 {
+                return Err(CoreError::ReadOnly("You can't delete the last CV".into()));
+            }
             std::fs::remove_file(&path).map_err(|e| match e.kind() {
                 std::io::ErrorKind::NotFound => CoreError::NotFound(name.into()),
                 _ => e.into(),
