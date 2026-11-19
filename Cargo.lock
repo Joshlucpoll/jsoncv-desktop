@@ -2214,6 +2214,7 @@ name = "jsoncv-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "directories",
  "jsoncv_core",
  "jsoncv_mcp",
  "notify",

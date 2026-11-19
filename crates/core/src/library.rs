@@ -21,6 +21,8 @@ pub struct CvInfo {
     pub name: String,
     pub theme: Option<String>,
     pub tailored_from: Option<String>,
+    /// `meta.pageMode == "continuous"`: one long page instead of paper-sized pages.
+    pub continuous: bool,
     pub modified_ms: i64,
     pub error: Option<String>,
 }
@@ -93,16 +95,6 @@ impl Library {
                 configured.display()
             )));
         }
-        // Same for a chosen history folder: don't silently start an empty history elsewhere.
-        if let Some(dir) = db
-            .parent()
-            .filter(|d| db != crate::config::default_history() && !d.exists())
-        {
-            return Err(CoreError::NotFound(format!(
-                "history folder {}",
-                dir.display()
-            )));
-        }
         Library::open(configured, db)
     }
 
@@ -170,6 +162,7 @@ impl Library {
                 name: name.clone(),
                 theme: None,
                 tailored_from: None,
+                continuous: false,
                 modified_ms: 0,
                 error: Some(error.into()),
             };
@@ -192,6 +185,7 @@ impl Library {
                 name: name.clone(),
                 theme: None,
                 tailored_from: None,
+                continuous: false,
                 modified_ms,
                 error: None,
             };
@@ -209,6 +203,7 @@ impl Library {
                     let meta = &doc.cv["meta"];
                     info.theme = meta["theme"].as_str().map(String::from);
                     info.tailored_from = meta["tailoredFrom"]["cv"].as_str().map(String::from);
+                    info.continuous = meta["pageMode"] == "continuous";
                 }
             }
             out.push(info);
@@ -465,19 +460,41 @@ impl Library {
         theme_id: &str,
         author: Author,
     ) -> Result<Saved, CoreError> {
+        self.get_theme(theme_id)?;
+        self.set_cv_meta(
+            name,
+            "theme",
+            Some(theme_id.into()),
+            author,
+            &format!("Theme set to {theme_id}"),
+        )
+    }
+
+    /// Sets (or with `None` removes) `meta.<key>`, a per-CV tool setting such as `pageMode`.
+    pub fn set_cv_meta(
+        &self,
+        name: &str,
+        key: &str,
+        value: Option<Value>,
+        author: Author,
+        message: &str,
+    ) -> Result<Saved, CoreError> {
         self.locked(|tx| {
             self.sweep_external(tx)?;
             let mut cv = self.read_cv(name)?.cv;
-            self.get_theme(theme_id)?;
             let obj = cv
                 .as_object_mut()
                 .ok_or_else(|| CoreError::PatchFailed("CV is not an object".into()))?;
-            obj.entry("meta")
+            let meta = obj
+                .entry("meta")
                 .or_insert_with(|| serde_json::json!({}))
                 .as_object_mut()
-                .ok_or_else(|| CoreError::PatchFailed("meta is not an object".into()))?
-                .insert("theme".into(), theme_id.into());
-            self.write_locked(tx, name, &cv, author, &format!("Theme set to {theme_id}"))
+                .ok_or_else(|| CoreError::PatchFailed("meta is not an object".into()))?;
+            match value {
+                Some(v) => meta.insert(key.into(), v),
+                None => meta.remove(key),
+            };
+            self.write_locked(tx, name, &cv, author, message)
         })
     }
 }

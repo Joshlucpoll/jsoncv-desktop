@@ -9,8 +9,9 @@ import {
 } from '../api.ts'
 import { shrank } from '../lib/form.ts'
 import { ConflictBanner } from './ConflictBanner.tsx'
-import { CvForm } from './CvForm.tsx'
+import { CvForm, type Reveal } from './CvForm.tsx'
 import { DiffView } from './DiffView.tsx'
+import { Icon } from './Icon.tsx'
 
 const SAVE_DELAY_MS = 1000
 
@@ -30,9 +31,9 @@ function same(a: unknown, b: unknown): boolean {
 const WIDTH_KEY = 'jsoncv.editWidth'
 const readWidth = () => {
   try {
-    return Number(localStorage.getItem(WIDTH_KEY)) || 380
+    return Number(localStorage.getItem(WIDTH_KEY)) || 440
   } catch {
-    return 380
+    return 440
   }
 }
 const clampWidth = (w: number) => Math.round(Math.min(Math.max(w, 320), window.innerWidth * 0.6))
@@ -40,20 +41,34 @@ const clampWidth = (w: number) => Math.round(Math.min(Math.max(w, 320), window.i
 const darkQuery = matchMedia('(prefers-color-scheme: dark)')
 const useDark = () => useSyncExternalStore((cb) => { darkQuery.addEventListener('change', cb); return () => darkQuery.removeEventListener('change', cb) }, () => darkQuery.matches)
 
+export type EditTab = 'form' | 'json'
+
 type Props = {
   name: string
   onClose(): void
+  /** The editor shown when the panel opens; later changes come through `tabRequest`. */
+  initialTab: EditTab
+  /** A request (from the Options menu) to switch editor; `n` makes a repeat count again. */
+  tabRequest?: { tab: EditTab; n: number }
+  /** Reports the editor now shown. */
+  onTab(t: EditTab): void
+  /** A field to scroll to and flash, from a click in the preview. */
+  reveal?: Reveal
+  /** The field (JSON Pointer) the user is working in, so the preview can mark it. */
+  onFocusPath(path: string): void
   /** The panel registers a check App runs before closing it or switching CV. */
   leaveRef: { current: (() => Promise<boolean>) | null }
   /** Saves any pending draft without leaving; resolves true when nothing unsaved remains. */
   saveRef: { current: (() => Promise<boolean>) | null }
 }
 
-export function EditPanel({ name, onClose, leaveRef, saveRef }: Props) {
+export function EditPanel({ name, onClose, initialTab, tabRequest, onTab, reveal, onFocusPath, leaveRef, saveRef }: Props) {
   const [schema, setSchema] = useState<RJSFSchema>()
   const [base, setBase] = useState<unknown>()
   const [draft, setDraft] = useState<unknown>()
-  const [tab, setTab] = useState<'form' | 'json'>('form')
+  const [tab, setTab] = useState<EditTab>(initialTab)
+  const [section, setSection] = useState('basics')
+  const body = useRef<HTMLDivElement>(null)
   const [jsonText, setJsonText] = useState('')
   const [jsonError, setJsonError] = useState<string>()
   const [conflict, setConflict] = useState(false)
@@ -271,17 +286,51 @@ export function EditPanel({ name, onClose, leaveRef, saveRef }: Props) {
     }
   }
 
-  const switchTab = (t: 'form' | 'json') => {
+  const switchTab = useCallback((t: EditTab) => {
     if (t === 'form' && jsonErrRef.current) {
       setJsonError(`Fix the JSON before switching to the form. ${jsonErrRef.current}`)
-      return
+      return false
     }
-    if (t === 'json') {
+    if (t === 'json' && draftRef.current !== undefined) {
       setJsonText(JSON.stringify(draftRef.current, null, 2))
       setJsonError(undefined)
     }
     setTab(t)
+    return true
+  }, [])
+  useEffect(() => onTab(tab), [tab, onTab])
+  const firstRequest = useRef(tabRequest?.n)
+  useEffect(() => {
+    // The request that opened the panel is already applied as initialTab.
+    if (tabRequest && tabRequest.n !== firstRequest.current) switchTab(tabRequest.tab)
+  }, [tabRequest, switchTab])
+
+  const ready = tab === 'form' && !!schema && draft !== undefined
+  // A preview click: open the field's section and card (CvForm), then scroll to the field, flash it and focus it.
+  useEffect(() => {
+    if (!reveal || !ready) return
+    const sec = reveal.path.split('/')[1]
+    if (sec) setSection(sec) // oxlint-disable-line react/set-state-in-effect -- follows an outside request
+    const t = window.setTimeout(() => {
+      let p = reveal.path
+      let el: HTMLElement | null = null
+      while (p && !(el = body.current?.querySelector<HTMLElement>(`[data-path="${CSS.escape(p)}"]`) ?? null)) p = p.slice(0, p.lastIndexOf('/'))
+      if (!el) return
+      el.scrollIntoView({ block: el.matches('.pane') ? 'start' : 'center', behavior: 'smooth' })
+      el.classList.remove('flash')
+      void el.offsetWidth // restart the animation
+      el.classList.add('flash')
+      // A single field takes the cursor; an item or a group just flashes.
+      if (!el.querySelector('[data-path]')) el.querySelector<HTMLElement>('input:not([type="checkbox"]), textarea')?.focus({ preventScroll: true })
+    }, 60)
+    return () => window.clearTimeout(t)
+  }, [reveal, ready])
+  const onFocusIn = (e: React.FocusEvent) => {
+    const path = (e.target as HTMLElement).closest<HTMLElement>('[data-path]')?.dataset.path
+    if (path) onFocusPath(path)
+    else if ((e.target as HTMLElement).closest('.section-tabs')) onFocusPath(`/${section}`)
   }
+  const pickSection = useCallback((s: string) => { setSection(s); onFocusPath(`/${s}`) }, [onFocusPath])
 
   const onFormChange = useCallback((next: unknown) => {
     if (shrank(draftRef.current, next)) setUndo({ prev: draftRef.current })
@@ -301,9 +350,9 @@ export function EditPanel({ name, onClose, leaveRef, saveRef }: Props) {
     [schema, draft],
   )
   const showFirstError = () => {
-    const el = document.getElementById(`root_${errors[0]?.split('/')[1] ?? ''}`)
-    if (el instanceof HTMLDetailsElement) el.open = true
-    el?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    const sec = errors[0]?.split('/')[1]
+    if (sec) setSection(sec)
+    window.setTimeout(() => document.querySelector('.edit-body .pane:not([hidden]) .error-detail')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60)
   }
 
   const unsaved = pending || !!jsonError || (base !== undefined && !same(draft, base))
@@ -317,8 +366,10 @@ export function EditPanel({ name, onClose, leaveRef, saveRef }: Props) {
     : { kind: 'ok', text: 'Saved' }
 
   const form = useMemo(
-    () => (schema && draft !== undefined ? <CvForm schema={schema} draft={draft} errors={errors} fresh={fresh} onChange={onFormChange} /> : null),
-    [schema, draft, errors, onFormChange],
+    () => (schema && draft !== undefined
+      ? <CvForm schema={schema} draft={draft} errors={errors} fresh={fresh} onChange={onFormChange} section={section} onSection={pickSection} reveal={reveal} />
+      : null),
+    [schema, draft, errors, onFormChange, section, pickSection, reveal],
   )
 
   const resize = (w: number) => {
@@ -345,15 +396,13 @@ export function EditPanel({ name, onClose, leaveRef, saveRef }: Props) {
         onKeyDown={(e) => { if (e.key === 'ArrowLeft') resize(width + 16); else if (e.key === 'ArrowRight') resize(width - 16) }}
       />
       <header>
-        <strong>Edit</strong>
+        <strong>{tab === 'json' ? 'Edit JSON' : 'Edit'}</strong>
         {status && (status.onClick
           ? <button className={`status ${status.kind}`} onClick={status.onClick} title="Show the first error">{status.text}</button>
           : <span className={`status ${status.kind}`} role="status">{status.text}</span>)}
-        <div className="tabs" role="tablist">
-          <button role="tab" aria-selected={tab === 'form'} onClick={() => switchTab('form')}>Form</button>
-          <button role="tab" aria-selected={tab === 'json'} onClick={() => switchTab('json')}>JSON</button>
-        </div>
-        <button className="link" onClick={onClose} aria-label="Close edit panel">Close</button>
+        <span className="spacer" />
+        {tab === 'json' && <button className="link subtle" onClick={() => switchTab('form')}>Back to form</button>}
+        <button className="icon-btn" onClick={onClose} aria-label="Close edit panel" title="Close"><Icon name="x" /></button>
       </header>
       {conflict && (
         <ConflictBanner canShow={!!loadCommit} busy={busy} onShow={() => setDiffOpen(true)} onDiscard={discard} onOverwrite={overwrite} />
@@ -370,7 +419,7 @@ export function EditPanel({ name, onClose, leaveRef, saveRef }: Props) {
           <button className="link" onClick={() => { onDraft(undo.prev); setUndo(undefined) }}>Undo</button>
         </div>
       )}
-      <div className="edit-body">
+      <div className={`edit-body${tab === 'json' ? ' json' : ''}`} ref={body} onFocus={onFocusIn}>
         {tab === 'form' ? form : (
           <>
             <CodeMirror value={jsonText} extensions={[json()]} theme={dark ? 'dark' : 'light'} onChange={onJson} basicSetup={{ foldGutter: false }} />

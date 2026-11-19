@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildUiSchema, errorsUnder, humanize, itemSummary, shrank } from './form.ts'
+import realSchema from '../../../crates/core/schema/jsoncv.schema.json'
+import { ORDER, buildUiSchema, errorsUnder, humanize, itemSummary, pointer, shrank, splitTags } from './form.ts'
 
 describe('humanize', () => {
   it('splits camelCase and keeps hand-written labels', () => {
@@ -30,16 +31,35 @@ describe('buildUiSchema', () => {
     expect(ui.work.items.highlights.items['ui:label']).toBe(false)
     expect(ui.work.items.highlights.items['ui:widget']).toBe('textarea')
   })
+  it('orders fields only by names the schema has (rjsf rejects others)', () => {
+    type N = { properties?: Record<string, N>; items?: N }
+    // The field names of the object at key `k` (or of its list's items), wherever it sits.
+    const find = (n: N, k: string): string[] | undefined => {
+      for (const [key, v] of Object.entries(n.properties ?? {})) {
+        if (key === k) return Object.keys((v.items ?? v).properties ?? {})
+        const deeper = find(v.items ?? v, k)
+        if (deeper) return deeper
+      }
+    }
+    const props = (k: string) => find(realSchema as N, k) ?? []
+    for (const [k, order] of Object.entries(ORDER)) for (const f of order) if (f !== '*') expect(props(k), `${k}.${f}`).toContain(f)
+    const real = buildUiSchema(realSchema as never)
+    expect(real.work.items['ui:order'][0]).toBe('position')
+    expect(real.work.items.name['ui:title']).toBe('Company')
+    expect(real.basics['ui:order'][0]).toBe('name')
+    expect(real.skills.items.keywords['ui:field']).toBe('tags')
+  })
 })
 
 describe('itemSummary', () => {
   it('uses position and employer for work', () => {
-    expect(itemSummary({ name: 'Northwind', position: 'Engineer' })).toEqual({ title: 'Engineer', sub: 'Northwind' })
+    expect(itemSummary({ name: 'Northwind', position: 'Engineer', startDate: '2020-03' })).toEqual({ title: 'Engineer', sub: 'Northwind', when: '2020 – Present' })
+    expect(itemSummary({ title: 'Prize', date: '2019-05-01' }).when).toBe('2019')
   })
   it('falls back to name alone, and to empty', () => {
-    expect(itemSummary({ name: 'tinylog', url: 'x' })).toEqual({ title: 'tinylog', sub: '' })
-    expect(itemSummary({})).toEqual({ title: '', sub: '' })
-    expect(itemSummary('text')).toEqual({ title: '', sub: '' })
+    expect(itemSummary({ name: 'tinylog', url: 'x' })).toEqual({ title: 'tinylog', sub: '', when: '' })
+    expect(itemSummary({})).toEqual({ title: '', sub: '', when: '' })
+    expect(itemSummary('text')).toEqual({ title: '', sub: '', when: '' })
   })
 })
 
@@ -60,5 +80,13 @@ describe('errorsUnder', () => {
     expect(errorsUnder(e, ['work'])).toBe(2)
     expect(errorsUnder(e, ['work', 0])).toBe(1)
     expect(errorsUnder(e, [])).toBe(4)
+  })
+})
+
+describe('pointer and splitTags', () => {
+  it('builds JSON pointers and splits pasted tag lists', () => {
+    expect(pointer(['work', 0, 'name'])).toBe('/work/0/name')
+    expect(pointer([])).toBe('')
+    expect(splitTags(' Rust, C ,\nPython,, ')).toEqual(['Rust', 'C', 'Python'])
   })
 })

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use rusqlite::{
@@ -53,33 +53,6 @@ fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as i64)
-}
-
-/// Move the history database into `dir` as `history.db` and return the new path.
-/// An existing `history.db` in `dir` is used as-is and the current file is left alone.
-pub fn move_db(from: &Path, dir: &Path) -> Result<PathBuf, CoreError> {
-    let to = dir.join("history.db");
-    if to == from || to.exists() {
-        return Ok(to);
-    }
-    std::fs::create_dir_all(dir)?;
-    if from.exists() {
-        let mut c = connect(from)?;
-        // The write lock stops other processes committing while the bytes are copied.
-        let tx = c
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(busy)?;
-        let tmp = dir.join(format!(".history.db.tmp-{}", std::process::id()));
-        let res = std::fs::copy(from, &tmp).and_then(|_| std::fs::rename(&tmp, &to));
-        if let Err(e) = res {
-            let _ = std::fs::remove_file(&tmp);
-            return Err(e.into());
-        }
-        drop(tx);
-        drop(c);
-        std::fs::remove_file(from)?;
-    }
-    Ok(to)
 }
 
 /// True when the file parses as JSON and passes the schema.

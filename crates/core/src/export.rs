@@ -5,7 +5,7 @@ use chromiumoxide::cdp::browser_protocol::emulation::{
     SetDeviceMetricsOverrideParams, SetScriptExecutionDisabledParams,
 };
 use chromiumoxide::cdp::browser_protocol::page::{PrintToPdfParams, Viewport};
-use chromiumoxide::page::ScreenshotParams;
+use chromiumoxide::page::{MediaTypeParams, ScreenshotParams};
 use chromiumoxide::{Browser, BrowserConfig};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -127,21 +127,62 @@ where
 }
 
 /// `size` is the fallback paper size; a CSS `@page` size still wins.
-pub async fn html_to_pdf(html: &str, out: &Path, size: PageSize) -> Result<(), CoreError> {
-    let (w, h) = match size {
+/// `continuous` prints the on-screen page as one sheet as tall as the content (no page breaks).
+pub async fn html_to_pdf(
+    html: &str,
+    out: &Path,
+    size: PageSize,
+    continuous: bool,
+) -> Result<(), CoreError> {
+    let (w, h): (f64, f64) = match size {
         PageSize::A4 => (8.27, 11.69),
         PageSize::Letter => (8.5, 11.0),
     };
-    let params = PrintToPdfParams::builder()
-        .prefer_css_page_size(true)
-        .paper_width(w)
-        .paper_height(h)
-        .print_background(true)
-        .build();
-    let bytes = with_page(html, |page| async move {
-        page.pdf(params).await.map_err(browser_err)
-    })
-    .await?;
+    let bytes = if continuous {
+        // The screen layout (the sheet the preview shows) at paper width, with the theme's @page margin dropped.
+        let html = format!(
+            "{html}<style>@page {{ size: auto !important; margin: 0 !important; }}</style>"
+        );
+        let px = (w * 96.0).round() as i64;
+        with_page(&html, |page| async move {
+            page.execute(SetDeviceMetricsOverrideParams::new(px, 1000, 1.0, false))
+                .await
+                .map_err(browser_err)?;
+            page.emulate_media_type(MediaTypeParams::Screen)
+                .await
+                .map_err(browser_err)?;
+            let content = page
+                .layout_metrics()
+                .await
+                .map_err(browser_err)?
+                .css_content_size;
+            // 2 px of slack so rounding never spills a sliver onto a second page.
+            let height = (content.height.ceil() + 2.0) / 96.0;
+            let params = PrintToPdfParams::builder()
+                .prefer_css_page_size(false)
+                .paper_width(w)
+                .paper_height(height.max(1.0))
+                .margin_top(0.0)
+                .margin_bottom(0.0)
+                .margin_left(0.0)
+                .margin_right(0.0)
+                .print_background(true)
+                .build();
+            page.pdf(params).await.map_err(browser_err)
+        })
+        .await?
+    } else {
+        let params = PrintToPdfParams::builder()
+            .prefer_css_page_size(true)
+            .paper_width(w)
+            .paper_height(h)
+            .print_background(true)
+            .build();
+        with_page(html, |page| async move {
+            page.pdf(params).await.map_err(browser_err)
+        })
+        .await?
+    };
     tokio::fs::write(out, bytes).await?;
     Ok(())
 }
@@ -202,7 +243,9 @@ impl Library {
             id.strip_prefix("builtin:").unwrap_or(&id)
         ));
         if format == ExportFormat::Pdf {
-            html_to_pdf(&html, &out, self.get_theme(&id)?.info.meta.page.size).await?;
+            let continuous = self.read_cv(name)?.cv["meta"]["pageMode"] == "continuous";
+            let size = self.get_theme(&id)?.info.meta.page.size;
+            html_to_pdf(&html, &out, size, continuous).await?;
         } else {
             std::fs::write(&out, html)?;
         }

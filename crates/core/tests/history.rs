@@ -1,4 +1,3 @@
-use jsoncv_core::history::move_db;
 use jsoncv_core::{library::Library, Author, CoreError};
 use serde_json::json;
 use tempfile::TempDir;
@@ -220,26 +219,6 @@ fn history_follows_moved_folder_and_libraries_do_not_mix() {
         messages(&lib, "main"),
         ["External changes", "Create library"]
     );
-}
-
-#[test]
-fn move_db_copies_or_uses_existing_target() {
-    let d = TempDir::new().unwrap();
-    let db = d.path().join("old/history.db");
-    let root = d.path().join("cvs");
-    Library::open(&root, &db).unwrap();
-    let to = move_db(&db, &d.path().join("new")).unwrap();
-    assert_eq!(to, d.path().join("new/history.db"));
-    assert!(!db.exists());
-    let lib = Library::open(&root, &to).unwrap();
-    assert_eq!(lib.history("main", 10).unwrap().len(), 1);
-    // A folder that already holds a history file: that file is used, the current one stays.
-    let keep = d.path().join("keep/history.db");
-    Library::open(&d.path().join("x"), &keep).unwrap();
-    let before = std::fs::read(&keep).unwrap();
-    assert_eq!(move_db(&to, &d.path().join("keep")).unwrap(), keep);
-    assert!(to.exists());
-    assert_eq!(std::fs::read(&keep).unwrap(), before);
 }
 
 #[test]

@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { type CloseRequestedEvent, getCurrentWindow } from '@tauri-apps/api/window'
 
-export type CvInfo = { name: string; theme: string | null; tailored_from: string | null; modified_ms: number; error: string | null }
+export type CvInfo = { name: string; theme: string | null; tailored_from: string | null; continuous: boolean; modified_ms: number; error: string | null }
 export type CvDoc = { name: string; cv: unknown; base: string }
 export type Saved = { commit: string; base: string }
 export type Version = { commit: string; author: string; message: string; time_ms: number }
@@ -11,7 +11,7 @@ export type ThemeReport = { render_error: { message: string; line: number | null
 export type SchemaError = { path: string; message: string }
 export type ApiError = { kind: string; message: string; errors?: SchemaError[] }
 export type ExportFormat = 'pdf' | 'html' | 'json'
-export type LibraryConfig = { library: string; history: string; historyInSyncFolder: boolean; fallbackFrom?: { path: string; message: string } }
+export type LibraryConfig = { library: string; fallbackFrom?: { path: string; message: string } }
 
 /** Dev-only: browser run with `?mock` serves a static page instead of the preview scheme. */
 export const MOCK = import.meta.env.DEV && new URLSearchParams(location.search).has('mock')
@@ -38,13 +38,16 @@ export const listThemes = () => invoke<ThemeInfo[]>('list_themes')
 export const themeReport = (id: string) => invoke<ThemeReport>('theme_report', { id })
 export const duplicateTheme = (id: string, newId: string) => invoke<ThemeInfo>('duplicate_theme', { id, newId })
 export const setCvTheme = (name: string, themeId: string) => invoke<Saved>('set_cv_theme', { name, themeId })
+/** Continuous: one long page in the preview and the PDF; otherwise paper-sized pages. */
+export const setPageMode = (name: string, continuous: boolean) => invoke<Saved>('set_page_mode', { name, continuous })
+export type AgentId = 'claude-code' | 'claude-desktop' | 'codex' | 'cursor' | 'vscode' | 'gemini' | 'windsurf'
+/** Adds the jsoncv MCP server to a coding agent; resolves with a line to show the user. */
+export const connectAgent = (agent: AgentId) => invoke<string>('connect_agent', { agent })
 export const exportCv = (name: string, format: ExportFormat) => invoke<string>('export', { name, format })
 export const printCv = (name: string) => invoke<void>('print_cv', { name })
 export const addAssetFromPath = (path: string) => invoke<string>('add_asset_from_path', { path })
 export const getConfig = () => invoke<LibraryConfig>('get_config')
 export const setLibrary = (path: string) => invoke<LibraryConfig>('set_library', { path })
-/** Moves the history file into the folder `path`, or adopts a history.db already there. */
-export const setHistory = (path: string) => invoke<LibraryConfig>('set_history', { path })
 export const reveal = (path: string) => invoke<void>('reveal', { path })
 export const binaryPath = () => invoke<string>('binary_path')
 export const themeDirPath = (id: string) => invoke<string>('theme_dir_path', { id })

@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ask, open } from '@tauri-apps/plugin-dialog'
-import { DEFAULT_THEME, MOCK, type ApiError, type CvInfo, type ExportFormat, type LibraryConfig, type MenuCommand, type ThemeInfo, type Version, binaryPath, errorMessage, exitApp, exportCv, getConfig, history, listCvs, listThemes, onCloseRequested, onLibraryChanged, onMenuCommand, onQuitRequested, printCv, restore, reveal, setCvTheme, setHistory, setLibrary } from './api.ts'
+import { DEFAULT_THEME, MOCK, type ApiError, type CvInfo, type ExportFormat, type LibraryConfig, type MenuCommand, type ThemeInfo, type Version, binaryPath, errorMessage, exitApp, exportCv, getConfig, history, listCvs, listThemes, onCloseRequested, onLibraryChanged, onMenuCommand, onQuitRequested, printCv, restore, reveal, setCvTheme, setLibrary, setPageMode } from './api.ts'
 import { MOD, revealLabel } from './lib/platform.ts'
-import { Settings } from './components/Settings.tsx'
+import { Settings, type SettingsSection } from './components/Settings.tsx'
 import { Sidebar } from './components/Sidebar.tsx'
 import { Toolbar } from './components/Toolbar.tsx'
-import { EditPanel } from './components/EditPanel.tsx'
+import { EditPanel, type EditTab } from './components/EditPanel.tsx'
 import { Preview } from './components/Preview.tsx'
 import { DiffView } from './components/DiffView.tsx'
 import { Toasts } from './components/Toasts.tsx'
@@ -28,7 +28,12 @@ export default function App() {
     if (!leaveRef.current || (await leaveRef.current())) await go()
   }, [])
   const [config, setConfig] = useState<LibraryConfig>()
-  const [settingsOpen, setSettingsOpen] = useState<'top' | 'themes'>()
+  const [settingsOpen, setSettingsOpen] = useState<SettingsSection>()
+  const [editTab, setEditTab] = useState<EditTab>('form')
+  const [tabRequest, setTabRequest] = useState<{ tab: EditTab; n: number }>()
+  // The field being worked on: picked in the preview, or focused in the form. The preview marks it.
+  const [focus, setFocus] = useState<{ path: string; from: 'preview' | 'form'; n: number }>()
+  const focusN = useRef(0)
   const [binary, setBinary] = useState('')
   const [fallbackDismissed, setFallbackDismissed] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -101,13 +106,14 @@ export default function App() {
     return () => { void unClose.then((f) => f()); void unQuit.then((f) => f()) }
   }, [guarded])
   // Renaming or deleting the open CV: let the edit panel save (or ask) first, then close it.
+  const closeEditor = useCallback(() => { setEditing(false); setEditTab('form'); setFocus(undefined) }, [])
   const leaveSelected = useCallback(async () => {
     if (leaveRef.current && !(await leaveRef.current())) return false
     // The panel agreed to leave; drop its guard now so the follow-up select does not ask again before unmount.
     leaveRef.current = saveRef.current = null
-    setEditing(false)
+    closeEditor()
     return true
-  }, [])
+  }, [closeEditor])
 
   // A CV removed outside the app falls back to main.
   const current = cvs.length && !cvs.some((c) => c.name === selected) ? 'main' : selected
@@ -169,12 +175,12 @@ export default function App() {
     const now = Date.now()
     if (lastCmd.current.cmd === cmd && now - lastCmd.current.at < 300) return
     lastCmd.current = { cmd, at: now }
-    if (cmd === 'edit') void guarded(() => setEditing((v) => !v))
+    if (cmd === 'edit') void guarded(() => (editing ? closeEditor() : setEditing(true)))
     else if (cmd === 'export-pdf') { if (!exporting) void doExport('pdf') }
     else if (cmd === 'print') doPrint()
     else if (cmd === 'new-cv') setNewSignal((n) => n + 1)
-    else setSettingsOpen('top')
-  }, [guarded, exporting, doExport, doPrint])
+    else setSettingsOpen('library')
+  }, [guarded, editing, closeEditor, exporting, doExport, doPrint])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return
@@ -197,23 +203,13 @@ export default function App() {
     return () => { window.removeEventListener('keydown', onKey); void un.then((f) => f()) }
   }, [runCmd, undoRedo])
 
-  const changeHistory = async () => {
-    try {
-      const p = await open({ directory: true })
-      if (typeof p !== 'string') return
-      setConfig(await setHistory(p))
-      seen.current.clear(); cursors.current.clear(); setReloadKey((k) => k + 1)
-    } catch (e) {
-      fail(e)
-    }
-  }
   const changeLibrary = () =>
     void guarded(async () => {
       try {
         const p = await open({ directory: true })
         if (typeof p !== 'string') return
         setConfig(await setLibrary(p))
-        setEditing(false); setSelected('main'); dismiss('error')
+        closeEditor(); setSelected('main'); dismiss('error')
         seen.current.clear(); cursors.current.clear()
         void reloadCvs(); void reloadThemes(); setReloadKey((k) => k + 1)
       } catch (e) {
@@ -222,10 +218,32 @@ export default function App() {
     })
   const cvTheme = cv?.theme ?? DEFAULT_THEME
   const pageSize = themes.find((t) => t.id === cvTheme)?.meta.page.size ?? 'A4'
+  const continuous = !!cv?.continuous
+
+  const requestTab = (tab: EditTab) => setTabRequest({ tab, n: Date.now() })
+  const toggleJson = () => {
+    const tab = editing && editTab === 'json' ? 'form' : 'json'
+    if (!editing) setEditTab(tab) // opens straight into it
+    else requestTab(tab)
+    setEditing(true)
+  }
+  const onPick = (path: string | undefined) => {
+    if (!path) return setFocus(undefined)
+    if (editing && editTab === 'json') requestTab('form')
+    setEditing(true)
+    setFocus({ path, from: 'preview', n: ++focusN.current })
+  }
+  // The JSON editor has no fields to point at, so the preview mark goes.
+  const onTab = useCallback((t: EditTab) => { setEditTab(t); if (t === 'json') setFocus(undefined) }, [])
+  const onFocusPath = useCallback((path: string) => {
+    setFocus((f) => (f?.path === path ? f : { path, from: 'form', n: ++focusN.current }))
+  }, [])
+  const reveal_ = useMemo(() => (focus?.from === 'preview' ? { path: focus.path, n: focus.n } : undefined), [focus])
+  const highlight = useMemo(() => (focus ? { path: focus.path, scroll: focus.from === 'form', n: focus.n } : undefined), [focus])
 
   return (
     <div className="app">
-      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => { dismiss('export'); dismiss('change'); dismiss('undo'); setSelected(n) }))} onChanged={reloadCvs} onLeaveSelected={leaveSelected} onError={fail} onSettings={() => setSettingsOpen('top')} newSignal={newSignal} />
+      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => { dismiss('export'); dismiss('change'); dismiss('undo'); setFocus(undefined); setSelected(n) }))} onChanged={reloadCvs} onLeaveSelected={leaveSelected} onError={fail} onSettings={() => setSettingsOpen('library')} newSignal={newSignal} />
       <main className="main">
         <Toolbar
           name={current}
@@ -233,11 +251,15 @@ export default function App() {
           themes={themes}
           editing={editing}
           exporting={exporting}
-          onEdit={() => void guarded(() => setEditing((v) => !v))}
+          onEdit={() => void guarded(() => (editing ? closeEditor() : setEditing(true)))}
           onExport={(f) => void doExport(f)}
           onPrint={doPrint}
           onTheme={(id) => setCvTheme(current, id).then(reloadCvs, fail)}
           onManageThemes={() => setSettingsOpen('themes')}
+          json={editing && editTab === 'json'}
+          onJson={toggleJson}
+          continuous={continuous}
+          onPageMode={(c) => setPageMode(current, c).then(reloadCvs, fail)}
         />
         {config?.fallbackFrom && !fallbackDismissed && (
           <div className="banner" role="alert">
@@ -247,15 +269,20 @@ export default function App() {
           </div>
         )}
         <div className="workspace">
-          <Preview cv={current} reloadKey={reloadKey} size={pageSize} />
-          {editing && <EditPanel key={current} name={current} leaveRef={leaveRef} saveRef={saveRef} onClose={() => void guarded(() => setEditing(false))} />}
+          <Preview cv={current} reloadKey={reloadKey} size={pageSize} continuous={continuous} onPick={onPick} highlight={editing ? highlight : undefined} />
+          {editing && (
+            <EditPanel
+              key={current} name={current} leaveRef={leaveRef} saveRef={saveRef} onClose={() => void guarded(closeEditor)}
+              initialTab={editTab} tabRequest={tabRequest} onTab={onTab} reveal={reveal_} onFocusPath={onFocusPath}
+            />
+          )}
           <Toasts list={toasts.list} dismiss={dismiss} />
         </div>
       </main>
       {settingsOpen && (
         <Settings
-          config={config} binary={binary} themes={themes} reloadKey={reloadKey} focusThemes={settingsOpen === 'themes'}
-          onChange={changeLibrary} onChangeHistory={() => void changeHistory()} onThemesChanged={() => void reloadThemes()}
+          config={config} binary={binary} themes={themes} reloadKey={reloadKey} section={settingsOpen}
+          onChange={changeLibrary} onThemesChanged={() => void reloadThemes()}
           onError={fail} onClose={() => setSettingsOpen(undefined)}
         />
       )}

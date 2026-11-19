@@ -207,6 +207,31 @@ pub async fn set_cv_theme(
     .await
 }
 
+/// `continuous`: the CV prints as one long page; otherwise as paper-sized pages (the default).
+#[tauri::command]
+pub async fn set_page_mode(
+    state: State<'_, AppState>,
+    name: String,
+    continuous: bool,
+) -> Res<Saved> {
+    with_lib(&state, move |l| {
+        let (v, msg) = if continuous {
+            (Some("continuous".into()), "Page setup: continuous page")
+        } else {
+            (None, "Page setup: multiple pages")
+        };
+        l.set_cv_meta(&name, "pageMode", v, Author::You, msg)
+    })
+    .await
+}
+
+/// Adds this app's MCP server to a coding agent (`claude-code`, `codex`, `cursor`, ...).
+#[tauri::command]
+pub async fn connect_agent(agent: String) -> Res<String> {
+    let bin = std::env::current_exe()?.to_string_lossy().into_owned();
+    blocking(move || Ok(crate::agents::connect(&agent, &bin)?)).await
+}
+
 #[tauri::command]
 pub async fn export(state: State<'_, AppState>, name: String, format: ExportFormat) -> Res<String> {
     let lib = state.lib();
@@ -269,8 +294,6 @@ pub async fn add_asset_from_path(state: State<'_, AppState>, path: PathBuf) -> R
 #[serde(rename_all = "camelCase")]
 pub struct LibraryConfig {
     library: String,
-    history: String,
-    history_in_sync_folder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     fallback_from: Option<Fallback>,
 }
@@ -279,8 +302,6 @@ fn library_config(lib: &Library, fallback_from: Option<Fallback>) -> LibraryConf
     LibraryConfig {
         fallback_from,
         library: lib.root().to_string_lossy().into_owned(),
-        history: lib.db().to_string_lossy().into_owned(),
-        history_in_sync_folder: config::is_in_sync_folder(lib.db()),
     }
 }
 
@@ -305,10 +326,7 @@ pub async fn set_library(
     let db = state.lib().db().to_path_buf();
     let lib = blocking(move || {
         let lib = Library::open(&path, &db)?;
-        config::save(&config::Config {
-            library: path,
-            ..config::load()
-        })?;
+        config::save(&config::Config { library: path })?;
         Ok(lib)
     })
     .await?;
@@ -316,39 +334,6 @@ pub async fn set_library(
     let out = library_config(&lib, None);
     *lock(&state.lib) = lib;
     *lock(&state.fallback) = None;
-    *lock(&state.watcher) = watcher;
-    Ok(out)
-}
-
-/// Moves the history file into the folder `path` (or adopts a `history.db` already there).
-#[tauri::command]
-pub async fn set_history(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    path: PathBuf,
-) -> Res<LibraryConfig> {
-    if !path.is_absolute() {
-        return Err(CoreError::BadPath(format!(
-            "History folder must be absolute: {}",
-            path.display()
-        ))
-        .into());
-    }
-    let cur = state.lib();
-    // shortcut: a running MCP process keeps the old path until it restarts.
-    let lib = blocking(move || {
-        let db = jsoncv_core::history::move_db(cur.db(), &path)?;
-        let lib = Library::open(cur.root(), &db)?;
-        config::save(&config::Config {
-            history: Some(db),
-            ..config::load()
-        })?;
-        Ok(lib)
-    })
-    .await?;
-    let watcher = start_watcher(app, lib.clone());
-    let out = library_config(&lib, lock(&state.fallback).clone());
-    *lock(&state.lib) = lib;
     *lock(&state.watcher) = watcher;
     Ok(out)
 }

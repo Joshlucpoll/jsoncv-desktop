@@ -8,7 +8,7 @@ async fn missing_browser_errors() {
     std::env::set_var("JSONCV_BROWSER", "/nonexistent");
     assert!(find_browser().is_none());
     let d = tempfile::tempdir().unwrap();
-    match html_to_pdf("<p>x</p>", &d.path().join("a.pdf"), PageSize::A4).await {
+    match html_to_pdf("<p>x</p>", &d.path().join("a.pdf"), PageSize::A4, false).await {
         Err(CoreError::Browser(m)) => assert!(m.contains("No Chrome"), "{m}"),
         o => panic!("{o:?}"),
     }

@@ -8,7 +8,9 @@ jsoncv-desktop is a macOS app (Tauri 2) for keeping your CV as plain JSON. A the
 
 ## Features
 
-- Edit a CV as a form or as JSON, with live preview and schema validation.
+- Edit a CV in a form (or as JSON, under Options), with live preview and schema validation.
+- Click anything in the preview to jump to its field; the field you edit is marked in the preview.
+- Page setup per CV (Options): paper-sized pages, or one continuous page in the preview and the PDF.
 - Swappable themes (Jinja template + CSS), with a field-coverage warning.
 - Undo and redo (⌘Z / ⇧⌘Z) for every saved change, yours or an agent's.
 - Tailored CVs as independent copies of the main CV.
@@ -43,10 +45,12 @@ The default library is `~/Documents/CVs`. Change it in Settings.
   .jsoncv-id                # links the folder to its history
 ```
 
-History is kept outside the library, in one SQLite file. The default is
-`~/Library/Application Support/dev.jsoncv.jsoncv-desktop/history.db`. Change its folder in Settings.
+History is kept outside the library, in one SQLite file:
+`~/Library/Application Support/dev.jsoncv.jsoncv-desktop/history.db`.
 
 ## Connect an AI agent (MCP)
+
+Settings → AI agents adds the server in one click to Claude Code, Claude Desktop, Codex, Cursor, VS Code, Gemini CLI or Windsurf. For any other agent, "Copy setup prompt" gives it the details to set itself up.
 
 The app binary is the MCP server. Run it with the `mcp` subcommand (stdio). It opens no window. Inside the bundle, the binary is:
 
@@ -78,10 +82,8 @@ The server reads the library path from the app's Settings. To override it, add `
 ## Data safety
 
 - The library can live in iCloud Drive or Dropbox. Each Mac keeps its own history file.
-- Keep the history file out of synced folders if two Macs use it. Sync clients can corrupt a database written from two places.
 - Back up the history file with Time Machine or by copying it.
 - Only CVs are versioned. Themes and assets are not.
-- A running MCP server keeps the history path it started with. Restart it after you move the history file.
 
 ## Themes
 

@@ -49,12 +49,11 @@ pub fn open_with_fallback(
     configured: &Path,
     default: &Path,
     db: &Path,
-    default_db: &Path,
 ) -> Result<(Library, Option<Fallback>), CoreError> {
     match Library::open_configured(configured, default, db) {
         Ok(lib) => Ok((lib, None)),
-        Err(e) if configured != default || db != default_db => {
-            let lib = Library::open(default, default_db)?;
+        Err(e) if configured != default => {
+            let lib = Library::open(default, db)?;
             Ok((
                 lib,
                 Some(Fallback {
@@ -142,7 +141,6 @@ pub fn run() {
             let (lib, fallback) = open_with_fallback(
                 &cfg.library,
                 &config::default_library(),
-                &cfg.history_path(),
                 &config::default_history(),
             )?;
             let watcher = start_watcher(app.handle().clone(), lib.clone());
@@ -183,12 +181,13 @@ pub fn run() {
             commands::theme_report,
             commands::duplicate_theme,
             commands::set_cv_theme,
+            commands::set_page_mode,
+            commands::connect_agent,
             commands::export,
             commands::print_cv,
             commands::add_asset_from_path,
             commands::get_config,
             commands::set_library,
-            commands::set_history,
             commands::reveal,
             commands::binary_path,
             commands::theme_dir_path,
@@ -452,7 +451,7 @@ mod tests {
         let bad = blocker.join("lib"); // a path below a regular file cannot be created
         let good = dir.path().join("default");
         let db = dir.path().join("history.db");
-        let fallback = |lib: &Path, def: &Path| open_with_fallback(lib, def, &db, &db);
+        let fallback = |lib: &Path, def: &Path| open_with_fallback(lib, def, &db);
         let (lib, fb) = fallback(&good, &good).unwrap();
         assert!(fb.is_none() && lib.root() == good);
         let (lib, fb) = fallback(&bad, &good).unwrap();
@@ -464,11 +463,6 @@ mod tests {
         let gone = dir.path().join("gone");
         let (_, fb) = fallback(&gone, &good).unwrap();
         assert!(fb.is_some() && !gone.exists());
-        // An unreachable history folder falls back to the default history file.
-        let unplugged = dir.path().join("unplugged/history.db");
-        let (lib, fb) = open_with_fallback(&good, &good, &unplugged, &db).unwrap();
-        assert!(fb.unwrap().message.contains("history folder"));
-        assert_eq!(lib.db(), db);
     }
 
     #[test]

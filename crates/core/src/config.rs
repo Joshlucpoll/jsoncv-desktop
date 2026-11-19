@@ -1,7 +1,4 @@
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::{io, path::PathBuf};
 
 use directories::{BaseDirs, ProjectDirs};
 use serde::{Deserialize, Serialize};
@@ -9,15 +6,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub library: PathBuf,
-    /// History database file; `None` means [`default_history`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub history: Option<PathBuf>,
-}
-
-impl Config {
-    pub fn history_path(&self) -> PathBuf {
-        self.history.clone().unwrap_or_else(default_history)
-    }
 }
 
 fn dirs() -> Option<ProjectDirs> {
@@ -47,7 +35,6 @@ pub fn load() -> Config {
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_else(|| Config {
             library: default_library(),
-            history: None,
         })
 }
 
@@ -57,20 +44,4 @@ pub fn save(cfg: &Config) -> io::Result<()> {
     let tmp = f.with_extension("json.tmp");
     std::fs::write(&tmp, serde_json::to_vec_pretty(cfg)?)?;
     std::fs::rename(tmp, f)
-}
-
-/// True when `p` sits in a cloud-sync folder, where a database written from two Macs can corrupt.
-pub fn is_in_sync_folder(p: &Path) -> bool {
-    let Some(home) = BaseDirs::new().map(|d| d.home_dir().to_path_buf()) else {
-        return false;
-    };
-    [
-        "Library/Mobile Documents",
-        "Library/CloudStorage",
-        "Dropbox",
-        "Google Drive",
-        "OneDrive",
-    ]
-    .iter()
-    .any(|d| p.starts_with(home.join(d)))
 }

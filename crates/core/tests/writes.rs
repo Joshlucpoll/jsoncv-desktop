@@ -182,7 +182,7 @@ fn write_to_broken_file_refused() {
         Err(CoreError::Json(_))
     ));
     assert!(matches!(
-        lib.set_cv_theme("main", "builtin:x", Author::You),
+        lib.set_cv_theme("main", "builtin:classic", Author::You),
         Err(CoreError::Json(_))
     ));
     assert_eq!(

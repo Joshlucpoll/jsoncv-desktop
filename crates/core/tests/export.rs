@@ -139,7 +139,7 @@ async fn pdf_paper_falls_back_to_theme_size() {
         let i = s.find("/MediaBox").expect("MediaBox");
         s[i..i + 40].to_string()
     };
-    html_to_pdf("<html><body>hi</body></html>", &out, PageSize::A4)
+    html_to_pdf("<html><body>hi</body></html>", &out, PageSize::A4, false)
         .await
         .unwrap();
     assert!(
@@ -147,15 +147,70 @@ async fn pdf_paper_falls_back_to_theme_size() {
         "{}",
         media(std::fs::read(&out).unwrap())
     );
-    html_to_pdf("<html><body>hi</body></html>", &out, PageSize::Letter)
-        .await
-        .unwrap();
+    html_to_pdf(
+        "<html><body>hi</body></html>",
+        &out,
+        PageSize::Letter,
+        false,
+    )
+    .await
+    .unwrap();
     assert!(
         media(std::fs::read(&out).unwrap()).contains("612"),
         "{}",
         media(std::fs::read(&out).unwrap())
     );
     let html = "<html><body>hi<script>while(true){}</script></body></html>";
-    html_to_pdf(html, &out, PageSize::A4).await.unwrap();
+    html_to_pdf(html, &out, PageSize::A4, false).await.unwrap();
     assert!(std::fs::read(&out).unwrap().starts_with(b"%PDF"));
+}
+
+#[tokio::test]
+async fn continuous_pdf_is_one_tall_page() {
+    if find_browser().is_none() {
+        eprintln!("skip: no browser");
+        return;
+    }
+    let d = tempfile::tempdir().unwrap();
+    let out = d.path().join("c.pdf");
+    // 3000 px of content: three A4 pages when paged.
+    let html = r#"<html><head><style>@page { size: A4; margin: 14mm; }</style></head><body style="margin:0"><div style="height:3000px">tall</div></body></html>"#;
+    html_to_pdf(html, &out, PageSize::A4, true).await.unwrap();
+    let s = String::from_utf8_lossy(&std::fs::read(&out).unwrap()).into_owned();
+    let pages = s.matches("/Type /Page").count() - s.matches("/Type /Pages").count();
+    assert_eq!(pages, 1, "one page");
+    let i = s.find("/MediaBox").expect("MediaBox");
+    // 3002 px = 2251.5 pt tall.
+    assert!(s[i..i + 60].contains("2251"), "{}", &s[i..i + 60]);
+}
+
+#[tokio::test]
+async fn continuous_cv_exports_as_one_page() {
+    if find_browser().is_none() {
+        eprintln!("skip: no browser");
+        return;
+    }
+    let d = tempfile::tempdir().unwrap();
+    let lib = Library::open(d.path(), &d.path().join(".history.db")).unwrap();
+    lib.set_cv_meta(
+        "main",
+        "pageMode",
+        Some("continuous".into()),
+        Author::You,
+        "Continuous page",
+    )
+    .unwrap();
+    assert!(lib.list_cvs().unwrap()[0].continuous);
+    for theme in ["builtin:classic", "builtin:two-column"] {
+        let p = lib
+            .export("main", ExportFormat::Pdf, Some(theme))
+            .await
+            .unwrap();
+        let s = String::from_utf8_lossy(&std::fs::read(p).unwrap()).into_owned();
+        let pages = s.matches("/Type /Page").count() - s.matches("/Type /Pages").count();
+        assert_eq!(pages, 1, "{theme}");
+    }
+    lib.set_cv_meta("main", "pageMode", None, Author::You, "Paged")
+        .unwrap();
+    assert!(!lib.list_cvs().unwrap()[0].continuous);
 }

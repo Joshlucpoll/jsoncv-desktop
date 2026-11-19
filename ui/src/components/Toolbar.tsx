@@ -8,6 +8,9 @@ import { Icon } from './Icon.tsx'
 type Props = {
   name: string; theme: string | null; themes: ThemeInfo[]; onTheme: (id: string) => void; onManageThemes: () => void
   editing: boolean; exporting: boolean; onEdit: () => void; onExport: (f: ExportFormat) => void; onPrint: () => void
+  /** The edit panel shows the JSON editor. */
+  json: boolean; onJson: () => void
+  continuous: boolean; onPageMode: (continuous: boolean) => void
 }
 
 /** Open state, outside-click close and arrow-key focus for a popup menu. */
@@ -48,6 +51,36 @@ function ExportMenu({ busy, onExport, onPrint }: { busy: boolean; onExport: (f: 
           <button role="menuitem" onClick={pick(() => onExport('json'))}>JSON</button>
           <div className="menu-sep" role="separator" />
           <button role="menuitem" onClick={pick(onPrint)}>Print…<kbd>{MOD}P</kbd></button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Per-CV options: how to edit it and how its pages are laid out. */
+function OptionsMenu({ json, onJson, continuous, onPageMode }: Pick<Props, 'json' | 'onJson' | 'continuous' | 'onPageMode'>) {
+  const { open, setOpen, box, onKeyDown } = useMenu()
+  const pick = (go: () => void) => () => { setOpen(false); go() }
+  return (
+    <div className="popup" ref={box} onKeyDown={onKeyDown}>
+      <button className="trigger" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        Options <Icon name="chevronDown" size={12} />
+      </button>
+      {open && (
+        <div className="menu options-menu" role="menu" aria-label="Options">
+          <button role="menuitem" onClick={pick(onJson)}><Icon name={json ? 'basics' : 'braces'} />{json ? 'Edit with the form' : 'Edit JSON directly'}</button>
+          <div className="menu-sep" role="separator" />
+          <div className="menu-heading" role="presentation">Page setup</div>
+          <button role="menuitemradio" aria-checked={!continuous} onClick={pick(() => continuous && onPageMode(false))}>
+            <Icon name="pages" />
+            <span className="opt-text"><span>Multiple pages</span><span className="opt-note">Paper-sized pages with page breaks</span></span>
+            {!continuous && <span className="check-mark"><Icon name="check" /></span>}
+          </button>
+          <button role="menuitemradio" aria-checked={continuous} onClick={pick(() => !continuous && onPageMode(true))}>
+            <Icon name="scroll" />
+            <span className="opt-text"><span>Continuous page</span><span className="opt-note">One long page, for screens and web links</span></span>
+            {continuous && <span className="check-mark"><Icon name="check" /></span>}
+          </button>
         </div>
       )}
     </div>
@@ -100,12 +133,13 @@ function ThemePicker({ cv, value, themes, onPick, onManage }: { cv: string; valu
   )
 }
 
-export function Toolbar({ name, theme, themes, onTheme, onManageThemes, editing, exporting, onEdit, onExport, onPrint }: Props) {
+export function Toolbar({ name, theme, themes, onTheme, onManageThemes, editing, exporting, onEdit, onExport, onPrint, json, onJson, continuous, onPageMode }: Props) {
   return (
     <header className="toolbar" data-tauri-drag-region>
       <h1 data-tauri-drag-region>{cvTitle(name)}</h1>
       <span className="spacer" data-tauri-drag-region />
       <ThemePicker cv={name} value={theme ?? DEFAULT_THEME} themes={themes} onPick={onTheme} onManage={onManageThemes} />
+      <OptionsMenu json={json} onJson={onJson} continuous={continuous} onPageMode={onPageMode} />
       <button className={editing ? 'on' : undefined} aria-pressed={editing} onClick={onEdit}>Edit <kbd>{MOD}E</kbd></button>
       <ExportMenu busy={exporting} onExport={onExport} onPrint={onPrint} />
     </header>

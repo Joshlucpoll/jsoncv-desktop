@@ -2,27 +2,21 @@
 import { emit } from '@tauri-apps/api/event'
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks'
 import schema from '../../../crates/core/schema/jsoncv.schema.json'
+import sample from '../../../crates/core/resources/sample.cv.json'
 import type { CvInfo, ThemeInfo } from '../api.ts'
 
 const now = Date.now()
 const cvs: CvInfo[] = [
-  { name: 'main', theme: null, tailored_from: null, modified_ms: now, error: null },
-  { name: 'tailored/stripe', theme: 'builtin:two-column', tailored_from: 'main', modified_ms: now, error: null },
-  { name: 'tailored/monzo', theme: null, tailored_from: 'main', modified_ms: now, error: null },
-  { name: 'tailored/broken-draft', theme: null, tailored_from: 'main', modified_ms: now, error: 'Invalid JSON at line 14' },
+  { name: 'main', theme: null, tailored_from: null, continuous: false, modified_ms: now, error: null },
+  { name: 'tailored/stripe', theme: 'builtin:two-column', tailored_from: 'main', continuous: false, modified_ms: now, error: null },
+  { name: 'tailored/monzo', theme: null, tailored_from: 'main', continuous: true, modified_ms: now, error: null },
+  { name: 'tailored/broken-draft', theme: null, tailored_from: 'main', continuous: false, modified_ms: now, error: 'Invalid JSON at line 14' },
 ]
 const theme = (id: string, name: string, builtin: boolean): ThemeInfo => ({ id, builtin, meta: { name, description: '', page: { size: 'A4' } } })
 const themes = [theme('builtin:classic', 'Classic', true), theme('builtin:two-column', 'Two-column', true), theme('my-theme', 'my-theme', false)]
 
-const sampleCv = {
-  basics: {
-    name: 'Ada Lovelace', label: 'Mathematician', email: 'ada@example.com', image: 'assets/ada.jpg',
-    location: { city: 'London', countryCode: 'GB' },
-    profiles: [{ network: 'GitHub', username: 'ada', url: 'https://github.com/ada' }],
-  },
-  work: [{ name: 'Analytical Engines Ltd', position: 'Programmer', startDate: '1842-01', highlights: ['Wrote the first program'] }],
-  skills: [{ name: 'Mathematics', keywords: ['Algebra', 'Calculus'] }],
-}
+// The CV dev-preview.html renders, so preview clicks map to real fields.
+const sampleCv = sample
 
 const M = 60_000
 const ver = (commit: string, author: string, message: string, ago: number) => ({ commit, author, message, time_ms: now - ago })
@@ -34,21 +28,18 @@ const versions = [
   ver('v7', 'You', 'Create main', 20 * 86_400_000),
 ]
 
-const appData = '~/Library/Application Support/dev.jsoncv.jsoncv-desktop/history.db'
-const synced = (p: string) => /iCloud|Mobile Documents|Dropbox/.test(p)
-let cfg: Record<string, unknown> = new URLSearchParams(location.search).has('sync')
-  ? { library: '~/Documents/CVs', history: '~/Library/Mobile Documents/com~apple~CloudDocs/history.db', historyInSyncFolder: true }
-  : { library: '~/Documents/CVs', history: appData, historyInSyncFolder: false }
+let cfg: Record<string, unknown> = { library: '~/Documents/CVs' }
 
 mockIPC(
   (cmd, args) => {
     const a = args as Record<string, string>
     switch (cmd) {
-      case 'list_cvs': return cvs
+      case 'list_cvs': return cvs.map((c) => ({ ...c })) // fresh objects, as the real IPC returns
       case 'list_themes': return themes
       case 'get_config': return cfg
       case 'set_library': cfg = { ...cfg, library: a.path }; return cfg
-      case 'set_history': { const h = `${a.path}/history.db`; cfg = { ...cfg, history: h, historyInSyncFolder: synced(h) }; return cfg }
+      case 'set_page_mode': { const cv = cvs.find((c) => c.name === a.name); if (cv) cv.continuous = !!(args as { continuous?: boolean }).continuous; return { commit: 'pm', base: 'h4' } }
+      case 'connect_agent': if (a.agent === 'gemini') throw { kind: 'NotFound', message: 'not found: the `gemini` command. Is Gemini CLI installed? Copy the setup prompt instead' }; return `Added jsoncv to ${a.agent}. Restart it to use it.`
       case 'theme_report': return a.id === 'my-theme'
         ? { render_error: null, missing: ['awards', 'work[].highlights', 'basics.location.region'] }
         : { render_error: null, missing: [] }

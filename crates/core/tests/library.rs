@@ -1,4 +1,4 @@
-use jsoncv_core::{config::is_in_sync_folder, library::Library, schema, CoreError};
+use jsoncv_core::{library::Library, schema, CoreError};
 use tempfile::TempDir;
 
 #[test]
@@ -78,22 +78,6 @@ fn bad_names_rejected() {
 }
 
 #[test]
-fn sync_folder_detection() {
-    let home = directories::BaseDirs::new()
-        .unwrap()
-        .home_dir()
-        .to_path_buf();
-    for p in [
-        "Library/Mobile Documents/x",
-        "Library/CloudStorage/Dropbox/x",
-        "Dropbox/x",
-    ] {
-        assert!(is_in_sync_folder(&home.join(p)), "{p}");
-    }
-    assert!(!is_in_sync_folder(&home.join("Documents/CVs")));
-}
-
-#[test]
 fn list_reports_bad_file_name() {
     let d = TempDir::new().unwrap();
     let lib = Library::open(d.path(), &d.path().join(".history.db")).unwrap();
@@ -140,10 +124,6 @@ fn open_configured_refuses_missing_non_default() {
             .root(),
         default
     );
-    assert!(matches!(
-        Library::open_configured(&default, &default, &d.path().join("gone/history.db")),
-        Err(CoreError::NotFound(m)) if m.starts_with("history folder")
-    ));
     let other = d.path().join("other");
     std::fs::create_dir(&other).unwrap();
     assert_eq!(

@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod agents;
 mod app;
 mod commands;
 
@@ -23,7 +24,7 @@ fn main() {
 
 fn run_mcp(args: &[String]) -> anyhow::Result<()> {
     let cfg = config::load();
-    let db = cfg.history_path();
+    let db = config::default_history();
     let lib = match args {
         [] => Library::open_configured(&cfg.library, &config::default_library(), &db)?,
         [flag, dir] if flag == "--dir" => Library::open(&PathBuf::from(dir), &db)?,
