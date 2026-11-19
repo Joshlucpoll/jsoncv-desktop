@@ -4,7 +4,7 @@
 
 ## What it is
 
-jsoncv-desktop is a macOS app (Tauri 2) for keeping your CV as plain JSON. A theme turns the JSON into HTML or PDF. Every change to a CV is saved as a version, so you can undo anything. One main CV gives rise to tailored copies, one per job. An AI agent can edit everything over MCP.
+jsoncv-desktop is a macOS app (Tauri 2) for keeping your CV as plain JSON. A theme turns the JSON into HTML or PDF. Every change to a CV is saved as a version, so you can undo anything. Keep as many CVs as you like (for example, one per job), organised in folders. Duplicate one to start another. An AI agent can edit everything over MCP.
 
 ## Features
 
@@ -13,7 +13,7 @@ jsoncv-desktop is a macOS app (Tauri 2) for keeping your CV as plain JSON. A the
 - Page setup per CV (Options): paper-sized pages, or one continuous page in the preview and the PDF.
 - Swappable themes (Jinja template + CSS), with a field-coverage warning.
 - Undo and redo (⌘Z / ⇧⌘Z) for every saved change, yours or an agent's.
-- Tailored CVs as independent copies of the main CV.
+- Folders and pinned CVs. A duplicate is an independent copy.
 - Export to HTML and PDF (PDF needs an installed Chromium browser).
 - Built-in MCP server for AI agents.
 
@@ -33,8 +33,9 @@ The default library is `~/Documents/CVs`. Change it in Settings.
 
 ```
 <library>/
-  main.cv.json
-  tailored/<slug>.cv.json
+  cvs/
+    <slug>.cv.json
+    <folder>/<slug>.cv.json # one level of folders
   assets/                   # CV files: photo, logos
   themes/<theme-id>/
     template.html.j2
@@ -43,7 +44,10 @@ The default library is `~/Documents/CVs`. Change it in Settings.
     assets/                 # theme files: fonts, icons (optional)
   exports/
   .jsoncv-id                # links the folder to its history
+  .jsoncv-pins.json         # pinned CVs, in order
 ```
+
+A CV's name is its file name, so a CV keeps its history when you move it to another folder (in the app or in Finder). Names must be unique across folders. Libraries from earlier versions (`main.cv.json`, `tailored/`) are moved to `cvs/` the first time they open.
 
 History is kept outside the library, in one SQLite file:
 `~/Library/Application Support/dev.jsoncv.jsoncv-desktop/history.db`.
