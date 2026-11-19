@@ -196,6 +196,7 @@ pub fn run() {
             commands::get_config,
             commands::set_library,
             commands::reveal,
+            commands::library_stats,
             commands::binary_path,
             commands::theme_dir_path,
             commands::exit_app,

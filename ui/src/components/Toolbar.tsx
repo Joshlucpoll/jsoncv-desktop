@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { DEFAULT_THEME, type ExportFormat, type ThemeInfo, type ThemeReport, previewHtml, themeReport } from '../api.ts'
 import { MOD } from '../lib/platform.ts'
 import { withHead } from '../lib/preview.ts'
 import { Icon } from './Icon.tsx'
+import { useMenu } from '../lib/menu.ts'
 
 type Props = {
   name: string; theme: string | null; themes: ThemeInfo[]; onTheme: (id: string) => void; onManageThemes: () => void
@@ -10,29 +11,6 @@ type Props = {
   /** The edit panel shows the JSON editor. */
   json: boolean; onJson: () => void
   continuous: boolean; onPageMode: (continuous: boolean) => void
-}
-
-/** Open state, outside-click close and arrow-key focus for a popup menu. */
-function useMenu() {
-  const [open, setOpen] = useState(false)
-  const box = useRef<HTMLDivElement>(null)
-  const items = () => Array.from(box.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])
-  useEffect(() => {
-    if (!open) return
-    const els = items()
-    ;(els.find((e) => e.getAttribute('aria-checked') === 'true') ?? els[0])?.focus()
-    const away = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false)
-    window.addEventListener('mousedown', away)
-    return () => window.removeEventListener('mousedown', away)
-  }, [open])
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    const els = items()
-    const i = els.indexOf(document.activeElement as HTMLElement)
-    if (e.key === 'Escape') { setOpen(false); box.current?.querySelector<HTMLElement>('.trigger')?.focus() }
-    else if (e.key === 'ArrowDown') { e.preventDefault(); els[(i + 1) % els.length]?.focus() }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); els[(i - 1 + els.length) % els.length]?.focus() }
-  }
-  return { open, setOpen, box, onKeyDown }
 }
 
 function ExportMenu({ busy, onExport, onPrint }: { busy: boolean; onExport: (f: ExportFormat) => void; onPrint: () => void }) {

@@ -59,7 +59,7 @@ mockIPC(
       case 'get_config': return cfg
       case 'set_library': cfg = { ...cfg, library: a.path }; return cfg
       case 'set_page_mode': { const cv = cvs.find((c) => c.name === a.name); if (cv) cv.continuous = !!(args as { continuous?: boolean }).continuous; return { commit: 'pm', base: 'h4' } }
-      case 'connect_agent': if (a.agent === 'gemini') throw { kind: 'NotFound', message: 'not found: the `gemini` command. Is Gemini CLI installed? Copy the setup prompt instead' }; return `Added jsoncv to ${a.agent}. Restart it to use it.`
+      case 'connect_agent': if (a.agent === 'codex') throw { kind: 'NotFound', message: 'not found: the `codex` command. Is Codex installed? Copy the setup prompt instead' }; return `Added jsoncv to ${a.agent}. Restart it to use it.`
       case 'theme_report': return a.id === 'my-theme'
         ? { render_error: null, missing: ['awards', 'work[].highlights', 'basics.location.region'] }
         : { render_error: null, missing: [] }

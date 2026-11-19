@@ -48,7 +48,7 @@ export const duplicateTheme = (id: string, newId: string) => invoke<ThemeInfo>('
 export const setCvTheme = (name: string, themeId: string) => invoke<Saved>('set_cv_theme', { name, themeId })
 /** Continuous: one long page in the preview and the PDF; otherwise paper-sized pages. */
 export const setPageMode = (name: string, continuous: boolean) => invoke<Saved>('set_page_mode', { name, continuous })
-export type AgentId = 'claude-code' | 'claude-desktop' | 'codex' | 'cursor' | 'vscode' | 'gemini' | 'windsurf'
+export type AgentId = 'claude-code' | 'claude-desktop' | 'codex'
 /** Adds the jsoncv MCP server to a coding agent; resolves with a line to show the user. */
 export const connectAgent = (agent: AgentId) => invoke<string>('connect_agent', { agent })
 export const exportCv = (name: string, format: ExportFormat) => invoke<string>('export', { name, format })
@@ -56,6 +56,8 @@ export const printCv = (name: string) => invoke<void>('print_cv', { name })
 export const addAssetFromPath = (path: string) => invoke<string>('add_asset_from_path', { path })
 export const getConfig = () => invoke<LibraryConfig>('get_config')
 export const setLibrary = (path: string) => invoke<LibraryConfig>('set_library', { path })
+export type LibraryStats = { bytes: number; assets: number; history_bytes: number }
+export const libraryStats = () => invoke<LibraryStats>('library_stats')
 export const reveal = (path: string) => invoke<void>('reveal', { path })
 export const binaryPath = () => invoke<string>('binary_path')
 export const themeDirPath = (id: string) => invoke<string>('theme_dir_path', { id })

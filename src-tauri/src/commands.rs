@@ -264,7 +264,7 @@ pub async fn set_page_mode(
     .await
 }
 
-/// Adds this app's MCP server to a coding agent (`claude-code`, `codex`, `cursor`, ...).
+/// Adds this app's MCP server to `claude-code`, `claude-desktop` or `codex`.
 #[tauri::command]
 pub async fn connect_agent(agent: String) -> Res<String> {
     let bin = std::env::current_exe()?.to_string_lossy().into_owned();
@@ -377,6 +377,51 @@ pub async fn set_library(
     Ok(out)
 }
 
+#[derive(Serialize)]
+pub struct LibraryStats {
+    /// Bytes of every file under the library folder.
+    bytes: u64,
+    /// Files in `assets/` (photos and other uploads).
+    assets: u64,
+    /// Bytes of the undo-history database, which stays on this machine.
+    history_bytes: u64,
+}
+
+/// Total size and count of the files under `dir`; a missing folder counts as empty.
+fn dir_usage(dir: &Path) -> (u64, u64) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return (0, 0);
+    };
+    entries
+        .flatten()
+        .fold((0, 0), |(b, n), e| match e.file_type() {
+            Ok(t) if t.is_dir() => {
+                let (db, dn) = dir_usage(&e.path());
+                (b + db, n + dn)
+            }
+            Ok(t) if t.is_file() => (b + e.metadata().map(|m| m.len()).unwrap_or(0), n + 1),
+            _ => (b, n), // symlinks are skipped so a link loop cannot recurse forever
+        })
+}
+
+#[tauri::command]
+pub async fn library_stats(state: State<'_, AppState>) -> Res<LibraryStats> {
+    let lib = state.lib();
+    blocking(move || {
+        let history_bytes = ["", "-wal"]
+            .iter()
+            .filter_map(|ext| std::fs::metadata(format!("{}{ext}", lib.db().display())).ok())
+            .map(|m| m.len())
+            .sum();
+        Ok(LibraryStats {
+            bytes: dir_usage(lib.root()).0,
+            assets: dir_usage(&lib.root().join("assets")).1,
+            history_bytes,
+        })
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn reveal(path: PathBuf) -> Res<()> {
     blocking(move || {
@@ -409,6 +454,16 @@ pub fn binary_path() -> Res<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dir_usage_sums_nested_files() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir(d.path().join("a")).unwrap();
+        std::fs::write(d.path().join("x"), b"123").unwrap();
+        std::fs::write(d.path().join("a/y"), b"45").unwrap();
+        assert_eq!(dir_usage(d.path()), (5, 2));
+        assert_eq!(dir_usage(&d.path().join("missing")), (0, 0));
+    }
     use jsoncv_core::render::RenderError;
 
     fn kind(e: CoreError) -> String {

@@ -291,7 +291,7 @@ export default function App() {
       </main>
       {settingsOpen && (
         <Settings
-          config={config} binary={binary} themes={themes} reloadKey={reloadKey} section={settingsOpen}
+          cvs={cvs} config={config} binary={binary} themes={themes} reloadKey={reloadKey} section={settingsOpen}
           onChange={changeLibrary} onThemesChanged={() => void reloadThemes()}
           onError={fail} onClose={() => setSettingsOpen(undefined)}
         />

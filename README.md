@@ -54,7 +54,7 @@ History is kept outside the library, in one SQLite file:
 
 ## Connect an AI agent (MCP)
 
-Settings → AI agents adds the server in one click to Claude Code, Claude Desktop, Codex, Cursor, VS Code, Gemini CLI or Windsurf. For any other agent, "Copy setup prompt" gives it the details to set itself up.
+Settings → AI agents adds the server in one click to Claude Code, Claude Desktop or Codex. For any other agent (Cursor, VS Code, Antigravity and so on), "Copy setup prompt" gives it the details to set itself up.
 
 The app binary is the MCP server. Run it with the `mcp` subcommand (stdio). It opens no window. Inside the bundle, the binary is:
 

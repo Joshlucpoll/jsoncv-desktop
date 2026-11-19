@@ -1,4 +1,5 @@
-//! One-click MCP setup for coding agents: the agent's own CLI where it has one, else its JSON config file.
+//! One-click MCP setup for Claude Code and Codex (their own CLIs) and Claude Desktop (its JSON config file).
+//! Other agents set themselves up from the copied setup prompt in Settings.
 
 use std::io::Read;
 use std::path::Path;
@@ -15,49 +16,47 @@ const NAME: &str = "jsoncv";
 /// Registers `bin mcp` as the `jsoncv` MCP server in `agent`. Returns a line for the user.
 pub fn connect(agent: &str, bin: &str) -> Result<String, CoreError> {
     let dirs = BaseDirs::new().ok_or_else(|| CoreError::NotFound("home folder".into()))?;
-    let (home, cfg) = (dirs.home_dir(), dirs.config_dir()); // cfg: ~/Library/Application Support on macOS
+    let cfg = dirs.config_dir(); // ~/Library/Application Support on macOS
     let entry = json!({ "command": bin, "args": ["mcp"] });
     match agent {
-        // Remove first so a moved app updates the path instead of failing with "already exists".
+        // "$1" is the agent CLI, "$2" the argument. Remove first so a moved app updates the path
+        // instead of failing with "already exists".
         "claude-code" => cli(
             "claude",
-            "claude mcp remove --scope user jsoncv >/dev/null 2>&1; claude mcp add --scope user jsoncv -- \"$1\" mcp",
+            r#""$1" mcp remove --scope user jsoncv >/dev/null 2>&1; "$1" mcp add --scope user jsoncv -- "$2" mcp"#,
             bin,
             "Claude Code",
         ),
         "codex" => cli(
             "codex",
-            "codex mcp remove jsoncv >/dev/null 2>&1; codex mcp add jsoncv -- \"$1\" mcp",
+            r#""$1" mcp remove jsoncv >/dev/null 2>&1; "$1" mcp add jsoncv -- "$2" mcp"#,
             bin,
             "Codex",
         ),
-        "claude-desktop" => merge(&cfg.join("Claude"), "claude_desktop_config.json", "mcpServers", entry, "Claude Desktop"),
-        "cursor" => merge(&home.join(".cursor"), "mcp.json", "mcpServers", entry, "Cursor"),
-        "gemini" => merge(&home.join(".gemini"), "settings.json", "mcpServers", entry, "Gemini CLI"),
-        "windsurf" => merge(&home.join(".codeium/windsurf"), "mcp_config.json", "mcpServers", entry, "Windsurf"),
-        "vscode" => merge(
-            &cfg.join("Code/User"),
-            "mcp.json",
-            "servers",
-            json!({ "type": "stdio", "command": bin, "args": ["mcp"] }),
-            "VS Code",
+        "claude-desktop" => merge(
+            &cfg.join("Claude"),
+            "claude_desktop_config.json",
+            "mcpServers",
+            entry,
+            "Claude Desktop",
         ),
         _ => Err(CoreError::BadName(agent.into())),
     }
 }
 
 /// Runs `script` in the user's login shell, so the agent CLI is found on the PATH their terminal uses.
-fn cli(exe: &str, script: &str, bin: &str, label: &str) -> Result<String, CoreError> {
+/// In `script`, "$1" is `exe` and "$2" is `arg`.
+fn cli(exe: &str, script: &str, arg: &str, label: &str) -> Result<String, CoreError> {
     let shell = std::env::var("SHELL")
         .ok()
         .filter(|s| s.ends_with("zsh") || s.ends_with("bash"))
         .unwrap_or_else(|| "/bin/zsh".into());
     let script = format!(
-        "command -v {exe} >/dev/null 2>&1 || {{ echo 'not-found' >&2; exit 127; }}; {script}"
+        r#"command -v "$1" >/dev/null 2>&1 || {{ echo 'not-found' >&2; exit 127; }}; {script}"#
     );
-    // -i reads .zshrc too, where many installers put their PATH line. "$1" is the app binary.
+    // -i reads .zshrc too, where many installers put their PATH line.
     let mut child = Command::new(shell)
-        .args(["-ilc", &script, "jsoncv", bin])
+        .args(["-ilc", &script, "jsoncv", exe, arg])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -183,8 +182,8 @@ mod tests {
 
     #[test]
     fn cli_runs_in_login_shell_and_reports_missing_command() {
-        // "$1" is the binary path, spaces included.
-        assert!(cli("test", r#"test "$1" = "/a b/x""#, "/a b/x", "T").is_ok());
+        // "$1" is the command and "$2" the argument, spaces included.
+        assert!(cli("test", r#""$1" "$2" = "/a b/x""#, "/a b/x", "T").is_ok());
         assert!(matches!(
             cli("jsoncv-no-such-cmd", "true", "/x", "T"),
             Err(CoreError::NotFound(_))
