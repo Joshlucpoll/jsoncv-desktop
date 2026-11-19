@@ -6,6 +6,8 @@ use sha2::{Digest, Sha256};
 
 use crate::{schema, Author, CoreError};
 
+const PINS: &str = ".jsoncv-pins.json";
+const ORDER: &str = ".jsoncv-order.json";
 const SAMPLE: &str = include_str!("../resources/sample.cv.json");
 
 #[derive(Debug, Clone)]
@@ -567,7 +569,8 @@ impl Library {
                     "Folder {new_name} already exists"
                 )));
             }
-            Ok(std::fs::rename(&old, &new)?)
+            std::fs::rename(&old, &new)?;
+            self.rename_in_list(ORDER, &format!("{name}/"), Some(&format!("{new_name}/")))
         })
     }
 
@@ -585,27 +588,77 @@ impl Library {
                 return Err(CoreError::BadName(format!("Folder {name} is not empty")));
             }
             let _ = std::fs::remove_file(dir.join(".DS_Store"));
-            Ok(std::fs::remove_dir(&dir)?)
+            std::fs::remove_dir(&dir)?;
+            self.rename_in_list(ORDER, &format!("{name}/"), None)
         })
     }
 
-    fn pins_file(&self) -> PathBuf {
-        self.root.join(".jsoncv-pins.json")
-    }
-
-    /// Pinned slugs in pin order. A missing or unreadable file means none.
-    fn pins(&self) -> Vec<String> {
-        std::fs::read(self.pins_file())
+    /// A JSON list of strings kept in the library root. A missing or unreadable file means none.
+    fn read_list(&self, file: &str) -> Vec<String> {
+        std::fs::read(self.root.join(file))
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default()
     }
 
-    fn write_pins(&self, pins: &[String]) -> Result<(), CoreError> {
-        let f = self.pins_file();
-        let tmp = f.with_file_name(format!(".jsoncv-pins.json.tmp-{}", std::process::id()));
-        std::fs::write(&tmp, serde_json::to_string(pins)? + "\n")?;
+    fn write_list(&self, file: &str, items: &[String]) -> Result<(), CoreError> {
+        let f = self.root.join(file);
+        let tmp = f.with_file_name(format!("{file}.tmp-{}", std::process::id()));
+        std::fs::write(&tmp, serde_json::to_string(items)? + "\n")?;
         Ok(std::fs::rename(&tmp, &f)?)
+    }
+
+    /// Replaces `old` with `new` in a list file (None removes it); a no-op when absent.
+    fn rename_in_list(&self, file: &str, old: &str, new: Option<&str>) -> Result<(), CoreError> {
+        let items = self.read_list(file);
+        if !items.iter().any(|i| i == old) {
+            return Ok(());
+        }
+        let next: Vec<String> = items
+            .into_iter()
+            .filter_map(|i| {
+                if i == old {
+                    new.map(String::from)
+                } else {
+                    Some(i)
+                }
+            })
+            .collect();
+        self.write_list(file, &next)
+    }
+
+    /// Pinned slugs in pin order.
+    fn pins(&self) -> Vec<String> {
+        self.read_list(PINS)
+    }
+
+    fn write_pins(&self, pins: &[String]) -> Result<(), CoreError> {
+        self.write_list(PINS, pins)
+    }
+
+    /// The sidebar's custom order: CV slugs and folder names with a trailing `/`, in display order.
+    pub fn order(&self) -> Vec<String> {
+        self.read_list(ORDER)
+    }
+
+    pub fn set_order(&self, keys: &[String]) -> Result<(), CoreError> {
+        self.locked(|_| self.write_list(ORDER, keys))
+    }
+
+    /// Rewrites the pin order; names that are not pinned, and repeats, are dropped.
+    pub fn set_pin_order(&self, names: &[String]) -> Result<(), CoreError> {
+        self.locked(|_| {
+            let pins = self.pins();
+            let mut next: Vec<String> = vec![];
+            for n in names {
+                if pins.contains(n) && !next.contains(n) {
+                    next.push(n.clone());
+                }
+            }
+            // Pins the list left out keep their place at the end, so none is lost.
+            next.extend(pins.into_iter().filter(|p| !names.contains(p)));
+            self.write_pins(&next)
+        })
     }
 
     /// Pins (at the end of the list) or unpins CV `name`.
@@ -645,12 +698,8 @@ impl Library {
             }
             let new = self.new_cv_path(new_slug, self.folder_of(&old).as_deref())?;
             std::fs::rename(&old, &new)?;
-            let pins: Vec<String> = self
-                .pins()
-                .into_iter()
-                .map(|p| if p == name { new_name.clone() } else { p })
-                .collect();
-            self.write_pins(&pins)?;
+            self.rename_in_list(PINS, name, Some(&new_name))?;
+            self.rename_in_list(ORDER, name, Some(&new_name))?;
             // History follows the CV to its new name.
             tx.execute(
                 "UPDATE versions SET cv = ?1 WHERE library = ?2 AND cv = ?3",
@@ -680,9 +729,8 @@ impl Library {
                 _ => e.into(),
             })?;
             self.record(tx, name, author, &format!("Deleted {name}"), None)?;
-            let mut pins = self.pins();
-            pins.retain(|p| p != name);
-            self.write_pins(&pins)?;
+            self.rename_in_list(PINS, name, None)?;
+            self.rename_in_list(ORDER, name, None)?;
             Ok(())
         })
     }

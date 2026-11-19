@@ -118,15 +118,6 @@ impl Library {
         Ok(out)
     }
 
-    /// Newest version id of `name`, if any.
-    pub(crate) fn head(&self, c: &Connection, name: &str) -> Result<Option<i64>, CoreError> {
-        Ok(c.query_row(
-            "SELECT MAX(id) FROM versions WHERE library = ?1 AND cv = ?2",
-            params![self.id(), name],
-            |r| r.get(0),
-        )?)
-    }
-
     /// Add a version unconditionally. `body` None marks the CV as deleted.
     pub(crate) fn insert(
         &self,

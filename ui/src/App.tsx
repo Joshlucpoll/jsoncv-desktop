@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ask, open } from '@tauri-apps/plugin-dialog'
-import { DEFAULT_THEME, MOCK, type ApiError, type CvInfo, type ExportFormat, type LibraryConfig, type MenuCommand, type ThemeInfo, type Version, binaryPath, errorMessage, exitApp, exportCv, getConfig, history, listCvs, listFolders, listThemes, onCloseRequested, onLibraryChanged, onMenuCommand, onQuitRequested, printCv, restore, reveal, setCvTheme, setLibrary, setPageMode } from './api.ts'
+import { DEFAULT_THEME, MOCK, type ApiError, type CvInfo, type ExportFormat, type LibraryConfig, type MenuCommand, type ThemeInfo, type Version, binaryPath, errorMessage, exitApp, exportCv, getConfig, getOrder, history, listCvs, listFolders, listThemes, onCloseRequested, onLibraryChanged, onMenuCommand, onQuitRequested, printCv, restore, reveal, setCvTheme, setLibrary, setPageMode } from './api.ts'
 import { MOD, revealLabel } from './lib/platform.ts'
 import { Settings, type SettingsSection } from './components/Settings.tsx'
 import { Sidebar } from './components/Sidebar.tsx'
@@ -19,6 +19,7 @@ const SWEEP_WAIT_MS = 2500
 export default function App() {
   const [cvs, setCvs] = useState<CvInfo[]>([])
   const [folders, setFolders] = useState<string[]>([])
+  const [order, setOrder] = useState<string[]>([])
   const [loaded, setLoaded] = useState(false)
   const [themes, setThemes] = useState<ThemeInfo[]>([])
   const [selected, setSelected] = useState('')
@@ -46,7 +47,7 @@ export default function App() {
   const { push, dismiss } = toasts
 
   const fail = useCallback((e: unknown) => void push({ key: 'error', kind: 'error', text: errorMessage(e) }), [push])
-  const reloadCvs = useCallback(() => Promise.all([listCvs(), listFolders()]).then(([c, f]) => { setCvs(c); setFolders(f); setLoaded(true) }, fail), [fail])
+  const reloadCvs = useCallback(() => Promise.all([listCvs(), listFolders(), getOrder()]).then(([c, f, o]) => { setCvs(c); setFolders(f); setOrder(o); setLoaded(true) }, fail), [fail])
   const reloadThemes = useCallback(() => listThemes().then(setThemes, fail), [fail])
 
   const selectedRef = useRef('')
@@ -253,7 +254,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => { dismiss('export'); dismiss('change'); dismiss('undo'); setFocus(undefined); setSelected(n) }))} folders={folders} loaded={loaded} onChanged={reloadCvs} onLeaveSelected={leaveSelected} onError={fail} onSettings={() => setSettingsOpen('library')} newSignal={newSignal} />
+      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => { dismiss('export'); dismiss('change'); dismiss('undo'); setFocus(undefined); setSelected(n) }))} folders={folders} order={order} loaded={loaded} onChanged={reloadCvs} onLeaveSelected={leaveSelected} onError={fail} onSettings={() => setSettingsOpen('library')} newSignal={newSignal} />
       <main className="main">
         {current ? <Toolbar
           name={current}

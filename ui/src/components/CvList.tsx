@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { confirm } from '@tauri-apps/plugin-dialog'
-import { type CvInfo, MOCK, createCv, createFolder, deleteCv, deleteFolder, duplicateCv, errorMessage, moveCv, renameCv, renameFolder, setPinned } from '../api.ts'
-import { groupCvs } from '../lib/sidebar.ts'
+import { type CvInfo, MOCK, createCv, createFolder, deleteCv, deleteFolder, duplicateCv, errorMessage, moveCv, renameCv, renameFolder, setOrder, setPinOrder, setPinned } from '../api.ts'
+import { dropPlace, folderKey, groupCvs, moveKey, nudge, orderKeys } from '../lib/sidebar.ts'
 import { MOD } from '../lib/platform.ts'
 import { Icon } from './Icon.tsx'
 
 type Props = {
-  cvs: CvInfo[]; folders: string[]; selected: string; onSelect: (n: string) => void; onChanged: () => Promise<unknown>; onError: (e: unknown) => void
+  cvs: CvInfo[]; folders: string[]; selected: string;
+  /** `.jsoncv-order.json`: the custom order of CVs and folders. */
+  order: string[]; onSelect: (n: string) => void; onChanged: () => Promise<unknown>; onError: (e: unknown) => void
   /** False until the first list arrives, so the empty state does not flash at startup. */
   loaded: boolean
   /** Runs the edit panel's leave guard before the selected CV is renamed or deleted; false cancels. */
@@ -62,8 +64,13 @@ function SlugInput({ initial, label, placeholder = 'name, e.g. stripe', nested, 
 
 type Menu = { x: number; y: number } & ({ kind: 'cv'; cv: CvInfo } | { kind: 'folder'; name: string; empty: boolean })
 type Creating = { kind: 'duplicate'; from: string } | { kind: 'blank' } | { kind: 'folder' }
+type Section = 'pinned' | 'all'
+type Side = 'before' | 'after' | 'into'
+type Drag = { key: string; section: Section; target?: { anchor: string; side: Side } }
+/** Pointer travel (px) before a press becomes a drag, so a plain click still selects. */
+const DRAG_START = 4
 
-export function CvList({ cvs, folders, loaded, selected, onSelect, onChanged, onError, onLeaveSelected, newSignal }: Props) {
+export function CvList({ cvs, folders, order, loaded, selected, onSelect, onChanged, onError, onLeaveSelected, newSignal }: Props) {
   const [menu, setMenu] = useState<Menu>()
   const [creating, setCreating] = useState<Creating>()
   const [renaming, setRenaming] = useState<{ kind: 'cv' | 'folder'; name: string }>()
@@ -121,9 +128,92 @@ export function CvList({ cvs, folders, loaded, selected, onSelect, onChanged, on
   }
   const run = (p: Promise<unknown>) => void p.then(onChanged).catch(onError)
 
-  const g = groupCvs(cvs, folders)
+  const g = groupCvs(cvs, folders, order)
 
-  const row = (c: CvInfo, nested: boolean, key: string) =>
+  // Reordering. Pointer events rather than HTML drag and drop, which the webview's file-drop handling can swallow.
+  const [drag, setDrag] = useState<Drag>()
+  const press = useRef<{ key: string; section: Section; x: number; y: number } | null>(null)
+  const dragRef = useRef<Drag | null>(null)
+  const suppressClick = useRef(false)
+  const pinNames = g.pinned.map((c) => c.name)
+  const apply = (key: string, section: Section, anchor: string, side: Side) => {
+    if (section === 'pinned') {
+      const before = side === 'after' ? (pinNames[pinNames.indexOf(anchor) + 1] ?? null) : anchor
+      return run(setPinOrder(moveKey(pinNames, key, before)))
+    }
+    const place = dropPlace(g.top, key, anchor, side)
+    const c = key.endsWith('/') ? undefined : cvs.find((x) => x.name === key)
+    run((async () => {
+      if (c && c.folder !== place.into) await moveCv(c.name, place.into)
+      await setOrder(moveKey(orderKeys(g.top), key, place.before))
+    })())
+  }
+  const applyRef = useRef(apply)
+  useEffect(() => { applyRef.current = apply })
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      const p = press.current
+      if (!p) return
+      if (!dragRef.current) {
+        if (Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_START) return
+        dragRef.current = { key: p.key, section: p.section }
+      }
+      const row = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>('[data-key]')
+      let target: Drag['target']
+      if (row && row.dataset.section === p.section && row.dataset.key !== p.key) {
+        const r = row.getBoundingClientRect()
+        const f = (e.clientY - r.top) / r.height
+        // A folder row's top edge drops above it; the rest drops into it.
+        const side: Side = row.dataset.key!.endsWith('/') ? (f < 0.3 ? 'before' : 'into') : f < 0.5 ? 'before' : 'after'
+        target = { anchor: row.dataset.key!, side }
+      }
+      dragRef.current = { ...dragRef.current, target }
+      setDrag(dragRef.current)
+    }
+    const end = (drop: boolean) => {
+      const d = dragRef.current
+      press.current = dragRef.current = null
+      if (!d) return
+      setDrag(undefined)
+      // The click that follows this pointerup must not select or toggle the row.
+      suppressClick.current = true
+      setTimeout(() => (suppressClick.current = false))
+      if (drop && d.target) applyRef.current(d.key, d.section, d.target.anchor, d.target.side)
+    }
+    const up = () => end(true)
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && dragRef.current) end(false) }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('keydown', key)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('keydown', key)
+    }
+  }, [])
+  const dragProps = (key: string, section: Section) => ({
+    onPointerDown: (e: React.PointerEvent) => { if (e.button === 0) press.current = { key, section, x: e.clientX, y: e.clientY } },
+    onKeyDown: (e: React.KeyboardEvent) => {
+      // Alt+↑ / Alt+↓ move the focused row one place: the keyboard way to reorder.
+      if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
+      e.preventDefault()
+      const dir = e.key === 'ArrowUp' ? -1 : 1
+      if (section === 'pinned') {
+        const i = pinNames.indexOf(key)
+        if (pinNames[i + dir]) run(setPinOrder(moveKey(pinNames, key, dir < 0 ? pinNames[i - 1] : (pinNames[i + 2] ?? null))))
+        return
+      }
+      const next = nudge(g.top, key, dir)
+      if (next) run(setOrder(next))
+    },
+  })
+  const rowClass = (key: string, section: Section) => {
+    if (!drag) return ''
+    if (drag.key === key && drag.section === section) return ' drag-src'
+    return drag.section === section && drag.target?.anchor === key ? ` drop-${drag.target.side}` : ''
+  }
+
+  const row = (c: CvInfo, nested: boolean, key: string, section: Section = 'all') =>
     renaming?.kind === 'cv' && renaming.name === c.name && key === c.name ? (
       <SlugInput
         key={key}
@@ -140,15 +230,18 @@ export function CvList({ cvs, folders, loaded, selected, onSelect, onChanged, on
         }}
       />
     ) : (
-      <div key={key} className={`cv-row${c.name === selected ? ' on' : ''}`}>
+      <div key={key} data-key={c.name} data-section={section} className={`cv-row${c.name === selected ? ' on' : ''}${rowClass(c.name, section)}`}>
         <button
           className={`item${nested ? ' nested' : ''}${c.name === selected ? ' on' : ''}`}
-          onClick={() => onSelect(c.name)}
+          onPointerDown={dragProps(c.name, section).onPointerDown}
+          aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+          onClick={() => { if (!suppressClick.current) onSelect(c.name) }}
           onContextMenu={(e) => {
             e.preventDefault()
             openMenu(e.currentTarget, { kind: 'cv', cv: c, x: e.clientX, y: e.clientY })
           }}
           onKeyDown={(e) => {
+            dragProps(c.name, section).onKeyDown(e)
             if (!(e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) return
             e.preventDefault()
             const r = e.currentTarget.getBoundingClientRect()
@@ -188,8 +281,8 @@ export function CvList({ cvs, folders, loaded, selected, onSelect, onChanged, on
         />
       )
     return (
-      <div key={`folder:${name}`} className="cv-row">
-        <button className="item folder" aria-expanded={open} onClick={() => toggleFolder(name)}
+      <div key={`folder:${name}`} data-key={folderKey(name)} data-section="all" className={`cv-row${rowClass(folderKey(name), 'all')}`}>
+        <button className="item folder" aria-expanded={open} {...dragProps(folderKey(name), 'all')} aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" onClick={() => { if (!suppressClick.current) toggleFolder(name) }}
           onContextMenu={(e) => { e.preventDefault(); openMenu(e.currentTarget, { kind: 'folder', name, empty, x: e.clientX, y: e.clientY }) }}>
           <span className={`chevron${open ? ' open' : ''}`}><Icon name="chevronRight" size={12} /></span>
           <Icon name="folder" size={13} />
@@ -260,12 +353,13 @@ export function CvList({ cvs, folders, loaded, selected, onSelect, onChanged, on
   )
 
   return (
-    <section aria-label="CVs">
+    <section aria-label="CVs" className={drag ? 'dragging' : undefined}>
       {g.pinned.length > 0 && <h2>Pinned</h2>}
-      {g.pinned.map((c) => row(c, false, `pin:${c.name}`))}
-      {g.pinned.length > 0 && (g.folders.length > 0 || g.loose.length > 0) && <h2>All CVs</h2>}
-      {g.folders.map((f) => [folderRow(f.name, f.cvs.length === 0), ...(collapsed.has(f.name) ? [] : f.cvs.map((c) => row(c, true, c.name)))])}
-      {g.loose.map((c) => row(c, false, c.name))}
+      {g.pinned.map((c) => row(c, false, `pin:${c.name}`, 'pinned'))}
+      {g.pinned.length > 0 && g.top.length > 0 && <h2>All CVs</h2>}
+      {g.top.map((t) => t.kind === 'folder'
+        ? [folderRow(t.name, t.cvs.length === 0), ...(collapsed.has(t.name) ? [] : t.cvs.map((c) => row(c, true, c.name)))]
+        : row(t.cv, false, t.cv.name))}
       {loaded && cvs.length === 0 && <p className="empty-note">No CVs yet</p>}
       {creating ? creatingInput : (
         <div className="add-row">

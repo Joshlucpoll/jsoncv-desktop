@@ -311,6 +311,13 @@ button.status.error { cursor: pointer; }
 /* CV rows */
 .cv-row { position: relative; display: flex; align-items: center; }
 .cv-row .item { padding-right: 28px; }
+/* Reordering: a line marks where the dragged row lands; a ring marks the folder it drops into. */
+.sidebar section.dragging, .sidebar section.dragging * { cursor: grabbing; user-select: none; }
+.cv-row.drag-src { opacity: 0.4; }
+.cv-row.drop-before::before, .cv-row.drop-after::after { content: ""; position: absolute; left: 6px; right: 6px; height: 2px; border-radius: 1px; background: var(--accent); pointer-events: none; }
+.cv-row.drop-before::before { top: -1px; }
+.cv-row.drop-after::after { bottom: -1px; }
+.cv-row.drop-into .item { box-shadow: inset 0 0 0 2px var(--accent); }
 .item.nested > .icon:first-child { color: var(--muted); margin-left: -16px; }
 .item.nested::before { content: none; }
 .row-menu { position: absolute; right: 4px; border: 0; background: none; color: var(--muted); padding: 2px 4px; border-radius: 5px; opacity: 0; display: inline-flex; }

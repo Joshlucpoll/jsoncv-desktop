@@ -164,6 +164,21 @@ pub async fn set_pinned(state: State<'_, AppState>, name: String, pinned: bool) 
 }
 
 #[tauri::command]
+pub async fn get_order(state: State<'_, AppState>) -> Res<Vec<String>> {
+    with_lib(&state, |l| Ok(l.order())).await
+}
+
+#[tauri::command]
+pub async fn set_order(state: State<'_, AppState>, keys: Vec<String>) -> Res<()> {
+    with_lib(&state, move |l| l.set_order(&keys)).await
+}
+
+#[tauri::command]
+pub async fn set_pin_order(state: State<'_, AppState>, names: Vec<String>) -> Res<()> {
+    with_lib(&state, move |l| l.set_pin_order(&names)).await
+}
+
+#[tauri::command]
 pub async fn rename_cv(state: State<'_, AppState>, name: String, new_slug: String) -> Res<CvInfo> {
     with_lib(&state, move |l| l.rename_cv(&name, &new_slug, Author::You)).await
 }

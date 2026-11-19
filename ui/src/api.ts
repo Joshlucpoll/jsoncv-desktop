@@ -33,6 +33,10 @@ export const createFolder = (name: string) => invoke<void>('create_folder', { na
 export const renameFolder = (name: string, newName: string) => invoke<void>('rename_folder', { name, newName })
 export const deleteFolder = (name: string) => invoke<void>('delete_folder', { name })
 export const setPinned = (name: string, pinned: boolean) => invoke<void>('set_pinned', { name, pinned })
+/** The sidebar's custom order: CV names and folder names with a trailing `/`. */
+export const getOrder = () => invoke<string[]>('get_order')
+export const setOrder = (keys: string[]) => invoke<void>('set_order', { keys })
+export const setPinOrder = (names: string[]) => invoke<void>('set_pin_order', { names })
 export const renameCv = (name: string, newSlug: string) => invoke<CvInfo>('rename_cv', { name, newSlug })
 export const deleteCv = (name: string) => invoke<void>('delete_cv', { name })
 export const history = (name: string, limit: number) => invoke<Version[]>('history', { name, limit })

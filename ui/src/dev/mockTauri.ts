@@ -15,6 +15,7 @@ const cvs: CvInfo[] = [
   cv('broken-draft', null, null, { error: 'Invalid JSON at line 14' }),
 ]
 const folders = ['applications', 'archive']
+let order: string[] = []
 const theme = (id: string, name: string, builtin: boolean): ThemeInfo => ({ id, builtin, meta: { name, description: '', page: { size: 'A4' } } })
 const themes = [theme('builtin:classic', 'Classic', true), theme('builtin:two-column', 'Two-column', true), theme('my-theme', 'my-theme', false)]
 
@@ -39,6 +40,9 @@ mockIPC(
     switch (cmd) {
       case 'list_cvs': return cvs.map((c) => ({ ...c })) // fresh objects, as the real IPC returns
       case 'list_folders': return [...folders]
+      case 'get_order': return [...order]
+      case 'set_order': order = [...(args as { keys: string[] }).keys]; return null
+      case 'set_pin_order': (args as { names: string[] }).names.forEach((n, i) => { const c = cvs.find((x) => x.name === n); if (c) c.pin = i }); return null
       case 'set_pinned': {
         const c = cvs.find((x) => x.name === a.name)!
         const pinned = cvs.filter((x) => x.pin !== null && x !== c).sort((x, y) => x.pin! - y.pin!)
