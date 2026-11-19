@@ -4,7 +4,7 @@ use serde_json::json;
 
 fn setup(template: &str) -> (tempfile::TempDir, Library) {
     let d = tempfile::tempdir().unwrap();
-    let lib = Library::open(d.path()).unwrap();
+    let lib = Library::open(d.path(), &d.path().join(".history.db")).unwrap();
     let t = d.path().join("themes/t1");
     std::fs::create_dir_all(&t).unwrap();
     std::fs::write(t.join("template.html.j2"), template).unwrap();

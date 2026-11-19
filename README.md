@@ -4,13 +4,13 @@
 
 ## What it is
 
-jsoncv-desktop is a macOS app (Tauri 2) for keeping your CV as plain JSON. A theme turns the JSON into HTML or PDF. Every change is a Git commit, so you can undo anything. One main CV gives rise to tailored copies, one per job. An AI agent can edit everything over MCP.
+jsoncv-desktop is a macOS app (Tauri 2) for keeping your CV as plain JSON. A theme turns the JSON into HTML or PDF. Every change to a CV is saved as a version, so you can undo anything. One main CV gives rise to tailored copies, one per job. An AI agent can edit everything over MCP.
 
 ## Features
 
 - Edit a CV as a form or as JSON, with live preview and schema validation.
 - Swappable themes (Jinja template + CSS), with a field-coverage warning.
-- Built-in Git history: view, diff and restore versions.
+- Undo and redo (⌘Z / ⇧⌘Z) for every saved change, yours or an agent's.
 - Tailored CVs as independent copies of the main CV.
 - Export to HTML and PDF (PDF needs an installed Chromium browser).
 - Built-in MCP server for AI agents.
@@ -33,16 +33,18 @@ The default library is `~/Documents/CVs`. Change it in Settings.
 <library>/
   main.cv.json
   tailored/<slug>.cv.json
-  assets/                   # CV files: photo, logos (versioned)
+  assets/                   # CV files: photo, logos
   themes/<theme-id>/
     template.html.j2
     style.css
     theme.json              # { name, description, page: { size: "A4" | "Letter" } }
     assets/                 # theme files: fonts, icons (optional)
-  exports/                  # in .gitignore
-  .gitignore
-  .git/
+  exports/
+  .jsoncv-id                # links the folder to its history
 ```
+
+History is kept outside the library, in one SQLite file. The default is
+`~/Library/Application Support/dev.jsoncv.jsoncv-desktop/history.db`. Change its folder in Settings.
 
 ## Connect an AI agent (MCP)
 
@@ -75,12 +77,15 @@ The server reads the library path from the app's Settings. To override it, add `
 
 ## Data safety
 
-- Do not put the library in iCloud Drive or Dropbox. Sync clients can corrupt the `.git` folder.
-- History is Git. To back up, push the library repo to a private remote.
+- The library can live in iCloud Drive or Dropbox. Each Mac keeps its own history file.
+- Keep the history file out of synced folders if two Macs use it. Sync clients can corrupt a database written from two places.
+- Back up the history file with Time Machine or by copying it.
+- Only CVs are versioned. Themes and assets are not.
+- A running MCP server keeps the history path it started with. Restart it after you move the history file.
 
 ## Themes
 
-Themes live in `<library>/themes/<theme-id>/`. Built-in themes (`builtin:classic`, `builtin:two-column`) are read-only. Use "Duplicate" in the Themes view to copy one into your library. The theme authoring guide is an MCP resource, so an agent can write themes. In templates, pass URLs through the `safe_url` filter.
+Themes live in `<library>/themes/<theme-id>/`. Built-in themes (`builtin:classic`, `builtin:two-column`) are read-only. Use "Duplicate…" under Settings → Themes to copy one into your library. The theme authoring guide is an MCP resource, so an agent can write themes. In templates, pass URLs through the `safe_url` filter.
 
 ## Releases
 

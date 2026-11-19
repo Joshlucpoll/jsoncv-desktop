@@ -27,7 +27,7 @@ pub enum CoreError {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
     #[error(transparent)]
-    Git(#[from] git2::Error),
+    Db(#[from] rusqlite::Error),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

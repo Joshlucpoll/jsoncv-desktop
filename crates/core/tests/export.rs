@@ -6,7 +6,7 @@ use serde_json::json;
 
 fn lib_with_photo() -> (tempfile::TempDir, Library) {
     let d = tempfile::tempdir().unwrap();
-    let lib = Library::open(d.path()).unwrap();
+    let lib = Library::open(d.path(), &d.path().join(".history.db")).unwrap();
     std::fs::create_dir_all(d.path().join("assets")).unwrap();
     std::fs::write(d.path().join("assets/me.png"), b"\x89PNG\r\n\x1a\nfake").unwrap();
     let cv = json!({"basics":{"name":"Ada Lovelace","image":"assets/me.png"}});

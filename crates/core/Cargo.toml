@@ -9,9 +9,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
 directories = "6"
-git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 sha2 = "0.11"
-fd-lock = "4"
 similar = "2"
 json-patch = "5"
 regex = "1"

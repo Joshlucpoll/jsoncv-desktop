@@ -4,7 +4,6 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::history::{commit, with_lock};
 use crate::{schema, Author, CoreError};
 
 const SAMPLE: &str = include_str!("../resources/sample.cv.json");
@@ -12,6 +11,9 @@ const SAMPLE: &str = include_str!("../resources/sample.cv.json");
 #[derive(Debug, Clone)]
 pub struct Library {
     root: PathBuf,
+    db: PathBuf,
+    /// Contents of `.jsoncv-id`; keys this library's rows in the history database.
+    id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,7 +54,8 @@ fn valid_slug(s: &str) -> bool {
 }
 
 impl Library {
-    pub fn open(root: &Path) -> Result<Library, CoreError> {
+    /// Open (creating if needed) the CV folder `root`, with its history kept in the database `db`.
+    pub fn open(root: &Path, db: &Path) -> Result<Library, CoreError> {
         std::fs::create_dir_all(root)?;
         for d in ["tailored", "themes", "assets", "exports"] {
             std::fs::create_dir_all(root.join(d))?;
@@ -61,65 +64,82 @@ impl Library {
         if !main.exists() {
             std::fs::write(&main, SAMPLE)?;
         }
-        let gi = root.join(".gitignore");
-        let cur = match std::fs::read(&gi) {
-            Ok(b) => b,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
-            Err(e) => return Err(e.into()),
-        };
-        let has = |pat: &str| {
-            cur.split(|b| *b == b'\n')
-                .any(|l| l.strip_suffix(b"\r").unwrap_or(l) == pat.as_bytes())
-        };
-        let mut add = String::new();
-        if !cur.is_empty() && !cur.ends_with(b"\n") {
-            add.push('\n');
-        }
-        for pat in ["exports/", ".*.tmp-*"].into_iter().filter(|p| !has(p)) {
-            add += &format!("{pat}\n");
-        }
-        if add.trim() != "" {
-            // Append only; existing bytes are never rewritten.
-            let mut f = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&gi)?;
-            std::io::Write::write_all(&mut f, add.as_bytes())?;
-        }
-        let fresh = !root.join(".git").exists();
-        if fresh {
-            git2::Repository::init(root)?;
-        }
+        let id = library_id(root)?;
+        crate::history::init(db)?;
         let lib = Library {
             root: root.to_path_buf(),
+            db: db.to_path_buf(),
+            id,
         };
-        if fresh {
-            // shortcut: stages only main + .gitignore; other pre-existing files are left to the sweep.
-            let mut paths = vec![Path::new(".gitignore")];
-            if crate::history::cv_valid(&main) {
-                paths.push(Path::new("main.cv.json"));
+        lib.locked(|tx| {
+            if lib.cv_head_any(tx)?.is_none() {
+                lib.sweep(tx, Author::You, "Create library")?;
             }
-            crate::history::with_lock(root, || {
-                crate::history::commit(root, &paths, Author::You, "Create library")
-            })?;
-        }
+            Ok(())
+        })?;
         Ok(lib)
     }
 
     /// Startup open of the configured library. A missing non-default folder (an unplugged drive,
     /// a moved folder) is an error rather than silently recreated empty.
-    pub fn open_configured(configured: &Path, default: &Path) -> Result<Library, CoreError> {
+    pub fn open_configured(
+        configured: &Path,
+        default: &Path,
+        db: &Path,
+    ) -> Result<Library, CoreError> {
         if configured != default && !configured.exists() {
             return Err(CoreError::NotFound(format!(
                 "library folder {}",
                 configured.display()
             )));
         }
-        Library::open(configured)
+        // Same for a chosen history folder: don't silently start an empty history elsewhere.
+        if let Some(dir) = db
+            .parent()
+            .filter(|d| db != crate::config::default_history() && !d.exists())
+        {
+            return Err(CoreError::NotFound(format!(
+                "history folder {}",
+                dir.display()
+            )));
+        }
+        Library::open(configured, db)
     }
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    pub fn db(&self) -> &Path {
+        &self.db
+    }
+
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Any version of this library, used to spot a library the database has never seen.
+    fn cv_head_any(&self, c: &rusqlite::Connection) -> Result<Option<i64>, CoreError> {
+        Ok(c.query_row(
+            "SELECT MAX(id) FROM versions WHERE library = ?1",
+            [self.id()],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// `main` plus every `tailored/*.cv.json`, including names that fail `cv_path`.
+    pub(crate) fn cv_names(&self) -> Result<Vec<String>, CoreError> {
+        let mut tailored = vec![];
+        for e in std::fs::read_dir(self.root.join("tailored"))? {
+            let f = e?.file_name().to_string_lossy().into_owned();
+            if let Some(slug) = f.strip_suffix(".cv.json") {
+                tailored.push(format!("tailored/{slug}"));
+            }
+        }
+        tailored.sort();
+        Ok(std::iter::once("main".to_string())
+            .chain(tailored)
+            .collect())
     }
 
     pub(crate) fn cv_path(&self, name: &str) -> Result<PathBuf, CoreError> {
@@ -144,18 +164,8 @@ impl Library {
     }
 
     pub fn list_cvs(&self) -> Result<Vec<CvInfo>, CoreError> {
-        let mut names = vec!["main".to_string()];
-        let mut tailored = vec![];
-        for e in std::fs::read_dir(self.root.join("tailored"))? {
-            let f = e?.file_name().to_string_lossy().into_owned();
-            if let Some(slug) = f.strip_suffix(".cv.json") {
-                tailored.push(format!("tailored/{slug}"));
-            }
-        }
-        tailored.sort();
-        names.extend(tailored);
         let mut out = vec![];
-        for name in names {
+        for name in self.cv_names()? {
             let bad = |error: &str| CvInfo {
                 name: name.clone(),
                 theme: None,
@@ -206,9 +216,10 @@ impl Library {
         Ok(out)
     }
 
-    /// Validate, write atomically, commit. Caller holds the lock and has swept.
+    /// Validate, write atomically, record a version. Caller holds the lock and has swept.
     fn write_locked(
         &self,
+        tx: &rusqlite::Transaction,
         name: &str,
         cv: &Value,
         author: Author,
@@ -232,8 +243,7 @@ impl Library {
             let _ = std::fs::remove_file(&tmp);
             return Err(e.into());
         }
-        let rel = format!("{name}.cv.json");
-        let commit = commit(&self.root, &[Path::new(&rel)], author, message)?;
+        let commit = self.record(tx, name, author, message, Some(&bytes))?;
         Ok(Saved {
             commit,
             base: sha_hex(&bytes),
@@ -247,9 +257,9 @@ impl Library {
         author: Author,
         message: &str,
     ) -> Result<Saved, CoreError> {
-        with_lock(&self.root, || {
-            self.sweep_external()?;
-            self.write_locked(name, cv, author, message)
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
+            self.write_locked(tx, name, cv, author, message)
         })
     }
 
@@ -260,14 +270,14 @@ impl Library {
         author: Author,
         message: Option<&str>,
     ) -> Result<Saved, CoreError> {
-        with_lock(&self.root, || {
-            self.sweep_external()?;
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
             let mut cv = self.read_cv(name)?.cv;
             json_patch::patch(&mut cv, patch).map_err(|e| CoreError::PatchFailed(e.to_string()))?;
             let msg = message
                 .map(String::from)
                 .unwrap_or_else(|| default_message(patch));
-            self.write_locked(name, &cv, author, &msg)
+            self.write_locked(tx, name, &cv, author, &msg)
         })
     }
 
@@ -279,12 +289,12 @@ impl Library {
         author: Author,
         message: Option<&str>,
     ) -> Result<Saved, CoreError> {
-        with_lock(&self.root, || {
-            self.sweep_external()?;
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
             if self.read_cv(name)?.base != base {
                 return Err(CoreError::Stale);
             }
-            self.write_locked(name, &cv, author, message.unwrap_or("Replaced CV"))
+            self.write_locked(tx, name, &cv, author, message.unwrap_or("Replaced CV"))
         })
     }
 
@@ -329,8 +339,8 @@ impl Library {
             all.push(o);
         }
         let patch: json_patch::Patch = serde_json::from_value(Value::Array(all))?;
-        with_lock(&self.root, || {
-            self.sweep_external()?;
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
             let mut cv = self.read_cv(name)?.cv;
             if let Some(p) = root_adds.iter().find(|p| cv.pointer(p).is_some()) {
                 return Err(CoreError::PatchFailed(format!(
@@ -339,18 +349,14 @@ impl Library {
             }
             json_patch::patch(&mut cv, &patch)
                 .map_err(|e| CoreError::PatchFailed(e.to_string()))?;
-            self.write_locked(name, &cv, Author::You, &default_message(&patch))
+            self.write_locked(tx, name, &cv, Author::You, &default_message(&patch))
         })
     }
 
     pub fn restore(&self, name: &str, commit: &str, author: Author) -> Result<Saved, CoreError> {
         let cv = self.read_cv_at(name, commit)?;
-        let id = git2::Repository::open(&self.root)?
-            .revparse_single(commit)?
-            .peel_to_commit()?
-            .id()
-            .to_string();
-        self.write_validated(name, &cv, author, &format!("Restored version {}", &id[..7]))
+        let id = commit.trim_start_matches('v');
+        self.write_validated(name, &cv, author, &format!("Restored version v{id}"))
     }
 
     pub fn create_tailored(
@@ -361,17 +367,16 @@ impl Library {
     ) -> Result<CvInfo, CoreError> {
         let name = format!("tailored/{slug}");
         let target = self.cv_path(&name)?;
-        with_lock(&self.root, || {
-            self.sweep_external()?;
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
             if target.exists() {
                 return Err(CoreError::BadName(format!("{name} already exists")));
             }
             let mut cv = self.read_cv(from)?.cv;
-            let head = git2::Repository::open(&self.root)?
-                .head()?
-                .peel_to_commit()?
-                .id()
-                .to_string();
+            let head = self
+                .head(tx, from)?
+                .map(|i| i.to_string())
+                .unwrap_or_default();
             cv.as_object_mut()
                 .ok_or_else(|| CoreError::PatchFailed("CV is not an object".into()))?
                 .entry("meta")
@@ -382,7 +387,13 @@ impl Library {
                     "tailoredFrom".into(),
                     serde_json::json!({"cv": from, "commit": head}),
                 );
-            self.write_locked(&name, &cv, author, &format!("Created {name} from {from}"))
+            self.write_locked(
+                tx,
+                &name,
+                &cv,
+                author,
+                &format!("Created {name} from {from}"),
+            )
         })?;
         self.info(&name)
     }
@@ -406,8 +417,8 @@ impl Library {
         }
         let new_name = format!("tailored/{new_slug}");
         let new = self.cv_path(&new_name)?;
-        with_lock(&self.root, || {
-            self.sweep_external()?;
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
             if !old.exists() {
                 return Err(CoreError::NotFound(name.into()));
             }
@@ -415,12 +426,17 @@ impl Library {
                 return Err(CoreError::BadName(format!("{new_name} already exists")));
             }
             std::fs::rename(&old, &new)?;
-            let (a, b) = (format!("{name}.cv.json"), format!("{new_name}.cv.json"));
-            commit(
-                &self.root,
-                &[Path::new(&a), Path::new(&b)],
+            // History follows the CV to its new name.
+            tx.execute(
+                "UPDATE versions SET cv = ?1 WHERE library = ?2 AND cv = ?3",
+                rusqlite::params![new_name, self.id(), name],
+            )?;
+            self.insert(
+                tx,
+                &new_name,
                 author,
                 &format!("Renamed {name} to {new_name}"),
+                Some(&std::fs::read(&new)?),
             )?;
             Ok(())
         })?;
@@ -432,19 +448,13 @@ impl Library {
         if name == "main" {
             return Err(CoreError::ReadOnly("main cannot be deleted".into()));
         }
-        with_lock(&self.root, || {
-            self.sweep_external()?;
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
             std::fs::remove_file(&path).map_err(|e| match e.kind() {
                 std::io::ErrorKind::NotFound => CoreError::NotFound(name.into()),
                 _ => e.into(),
             })?;
-            let rel = format!("{name}.cv.json");
-            commit(
-                &self.root,
-                &[Path::new(&rel)],
-                author,
-                &format!("Deleted {name}"),
-            )?;
+            self.record(tx, name, author, &format!("Deleted {name}"), None)?;
             Ok(())
         })
     }
@@ -455,8 +465,8 @@ impl Library {
         theme_id: &str,
         author: Author,
     ) -> Result<Saved, CoreError> {
-        with_lock(&self.root, || {
-            self.sweep_external()?;
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
             let mut cv = self.read_cv(name)?.cv;
             self.get_theme(theme_id)?;
             let obj = cv
@@ -467,7 +477,7 @@ impl Library {
                 .as_object_mut()
                 .ok_or_else(|| CoreError::PatchFailed("meta is not an object".into()))?
                 .insert("theme".into(), theme_id.into());
-            self.write_locked(name, &cv, author, &format!("Theme set to {theme_id}"))
+            self.write_locked(tx, name, &cv, author, &format!("Theme set to {theme_id}"))
         })
     }
 }
@@ -492,4 +502,22 @@ fn default_message(patch: &json_patch::Patch) -> String {
         }
     }
     format!("Edited {}", keys.join(", "))
+}
+
+/// Read `.jsoncv-id` in `root`, creating it with a random id if missing.
+fn library_id(root: &Path) -> Result<String, CoreError> {
+    let f = root.join(".jsoncv-id");
+    match std::fs::read_to_string(&f) {
+        Ok(s) if !s.trim().is_empty() => return Ok(s.trim().to_string()),
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let id = sha_hex(format!("{}{nanos}{}", root.display(), std::process::id()).as_bytes())[..32]
+        .to_string();
+    std::fs::write(&f, format!("{id}\n"))?;
+    Ok(id)
 }

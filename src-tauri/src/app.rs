@@ -43,15 +43,18 @@ impl AppState {
     }
 }
 
-/// Opens `configured`; if that fails, opens `default` and records why. Fails only if `default` fails too.
+/// Opens `configured` with history in `db`; if that fails, opens `default` with `default_db` and
+/// records why. Fails only if the defaults fail too.
 pub fn open_with_fallback(
     configured: &Path,
     default: &Path,
+    db: &Path,
+    default_db: &Path,
 ) -> Result<(Library, Option<Fallback>), CoreError> {
-    match Library::open_configured(configured, default) {
+    match Library::open_configured(configured, default, db) {
         Ok(lib) => Ok((lib, None)),
-        Err(e) if configured != default => {
-            let lib = Library::open(default)?;
+        Err(e) if configured != default || db != default_db => {
+            let lib = Library::open(default, default_db)?;
             Ok((
                 lib,
                 Some(Fallback {
@@ -135,8 +138,13 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let (lib, fallback) =
-                open_with_fallback(&config::load().library, &config::default_library())?;
+            let cfg = config::load();
+            let (lib, fallback) = open_with_fallback(
+                &cfg.library,
+                &config::default_library(),
+                &cfg.history_path(),
+                &config::default_history(),
+            )?;
             let watcher = start_watcher(app.handle().clone(), lib.clone());
             app.manage(AppState {
                 lib: Mutex::new(lib),
@@ -180,6 +188,7 @@ pub fn run() {
             commands::add_asset_from_path,
             commands::get_config,
             commands::set_library,
+            commands::set_history,
             commands::reveal,
             commands::binary_path,
             commands::theme_dir_path,
@@ -228,7 +237,7 @@ pub fn render_preview(
 ) -> String {
     let theme = theme.filter(|s| !s.is_empty());
     let commit = commit.filter(|s| !s.is_empty());
-    // Spec §5.3: a file broken outside the app shows its last committed (valid) version plus a notice.
+    // Spec §5.3: a file broken outside the app shows its last saved (valid) version plus a notice.
     let broken = commit.is_none()
         && match lib.read_cv(cv) {
             Err(CoreError::Json(_)) => true,
@@ -236,7 +245,12 @@ pub fn render_preview(
             Err(_) => false,
         };
     let res = if broken {
-        lib.render_cv(cv, theme, Some("HEAD"))
+        let last = lib
+            .history(cv, 1)
+            .ok()
+            .and_then(|h| h.into_iter().next())
+            .map_or(String::new(), |v| v.commit);
+        lib.render_cv(cv, theme, Some(&last))
             .map(|html| with_notice(&html))
     } else {
         lib.render_cv(cv, theme, commit)
@@ -392,7 +406,7 @@ mod tests {
     #[test]
     fn preview_renders_and_reports_errors() {
         let dir = tempfile::tempdir().unwrap();
-        let lib = Library::open(dir.path()).unwrap();
+        let lib = Library::open(dir.path(), &dir.path().join(".history.db")).unwrap();
         let ok = render_uri(&lib, preview_url("main").as_str());
         assert!(!ok.contains("Cannot render"), "{ok}");
         let bad = render_uri(
@@ -409,7 +423,7 @@ mod tests {
     #[test]
     fn preview_of_broken_file_shows_last_saved_version() {
         let dir = tempfile::tempdir().unwrap();
-        let lib = Library::open(dir.path()).unwrap();
+        let lib = Library::open(dir.path(), &dir.path().join(".history.db")).unwrap();
         let url = preview_url("main");
         std::fs::write(dir.path().join("main.cv.json"), "{").unwrap();
         let page = render_uri(&lib, url.as_str());
@@ -437,17 +451,24 @@ mod tests {
         std::fs::write(&blocker, "x").unwrap();
         let bad = blocker.join("lib"); // a path below a regular file cannot be created
         let good = dir.path().join("default");
-        let (lib, fb) = open_with_fallback(&good, &good).unwrap();
+        let db = dir.path().join("history.db");
+        let fallback = |lib: &Path, def: &Path| open_with_fallback(lib, def, &db, &db);
+        let (lib, fb) = fallback(&good, &good).unwrap();
         assert!(fb.is_none() && lib.root() == good);
-        let (lib, fb) = open_with_fallback(&bad, &good).unwrap();
+        let (lib, fb) = fallback(&bad, &good).unwrap();
         let fb = fb.expect("fallback recorded");
         assert_eq!(lib.root(), good);
         assert_eq!(fb.path, bad.to_string_lossy());
         assert!(!fb.message.is_empty());
-        assert!(open_with_fallback(&bad, &bad).is_err());
+        assert!(fallback(&bad, &bad).is_err());
         let gone = dir.path().join("gone");
-        let (_, fb) = open_with_fallback(&gone, &good).unwrap();
+        let (_, fb) = fallback(&gone, &good).unwrap();
         assert!(fb.is_some() && !gone.exists());
+        // An unreachable history folder falls back to the default history file.
+        let unplugged = dir.path().join("unplugged/history.db");
+        let (lib, fb) = open_with_fallback(&good, &good, &unplugged, &db).unwrap();
+        assert!(fb.unwrap().message.contains("history folder"));
+        assert_eq!(lib.db(), db);
     }
 
     #[test]

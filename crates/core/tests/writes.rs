@@ -8,26 +8,23 @@ fn patch(v: Value) -> json_patch::Patch {
 
 fn setup() -> (TempDir, Library) {
     let d = TempDir::new().unwrap();
-    let lib = Library::open(d.path()).unwrap();
+    let lib = Library::open(d.path(), &d.path().join(".history.db")).unwrap();
     (d, lib)
 }
 
-fn head_author(d: &TempDir) -> String {
-    let r = git2::Repository::open(d.path()).unwrap();
-    let c = r.head().unwrap().peel_to_commit().unwrap();
-    let n = c.author().name().unwrap().to_string();
-    n
+fn head_author(lib: &Library) -> String {
+    lib.history("main", 1).unwrap()[0].author.clone()
 }
 
 #[test]
 fn patch_writes_and_commits() {
-    let (d, lib) = setup();
+    let (_d, lib) = setup();
     let p = patch(json!([{"op":"replace","path":"/basics/name","value":"Grace"}]));
     let s = lib.patch_cv("main", &p, Author::Agent, None).unwrap();
     let doc = lib.read_cv("main").unwrap();
     assert_eq!(doc.cv["basics"]["name"], "Grace");
     assert_eq!(doc.base, s.base);
-    assert_eq!(head_author(&d), "Agent");
+    assert_eq!(head_author(&lib), "Agent");
     assert_eq!(lib.history("main", 1).unwrap()[0].message, "Edited basics");
 }
 
@@ -127,24 +124,18 @@ fn rename_and_delete_tailored() {
     );
     lib.delete_cv("tailored/b", Author::You).unwrap();
     assert!(!d.path().join("tailored/b.cv.json").exists());
-    let r = git2::Repository::open(d.path()).unwrap();
-    assert_eq!(
-        r.head()
-            .unwrap()
-            .peel_to_commit()
-            .unwrap()
-            .message()
-            .unwrap(),
-        "Deleted tailored/b"
-    );
-    let st: Vec<_> = r
-        .statuses(None)
-        .unwrap()
-        .iter()
-        .filter(|e| !e.status().is_ignored())
-        .map(|e| e.path().unwrap().to_string())
-        .collect();
-    assert!(st.is_empty(), "{st:?}");
+    let h = lib.history("tailored/b", 5).unwrap();
+    assert_eq!(h[0].message, "Deleted tailored/b");
+    // The rename carried the creation row along, and the old name has no history left.
+    assert_eq!(h.last().unwrap().message, "Created tailored/a from main");
+    assert!(lib.history("tailored/a", 5).unwrap().is_empty());
+    assert!(matches!(
+        lib.read_cv_at("tailored/b", &h[0].commit),
+        Err(CoreError::NotFound(_))
+    ));
+    // Recreating the slug keeps the old versions under it.
+    lib.create_tailored("b", "main", Author::You).unwrap();
+    assert_eq!(lib.history("tailored/b", 10).unwrap().len(), h.len() + 1);
 }
 
 #[test]
@@ -212,7 +203,7 @@ fn restore_adds_new_commit() {
     assert_eq!(lib.read_cv("main").unwrap().cv, orig);
     let h = lib.history("main", 50).unwrap();
     assert_eq!(h.len(), n + 1);
-    assert_eq!(h[0].message, format!("Restored version {}", &old[..7]));
+    assert_eq!(h[0].message, format!("Restored version v{old}"));
 }
 
 #[test]
@@ -231,13 +222,6 @@ fn draft_tail_removal_detects_concurrent_edit() {
         lib.read_cv("main").unwrap().cv["work"][1]["position"],
         "AgentEdit"
     );
-}
-
-#[test]
-fn gitignore_has_tmp_pattern() {
-    let (d, _lib) = setup();
-    let gi = std::fs::read_to_string(d.path().join(".gitignore")).unwrap();
-    assert!(gi.lines().any(|l| l == ".*.tmp-*"));
 }
 
 #[test]

@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 
 fn server() -> (tempfile::TempDir, JsoncvServer) {
     let dir = tempfile::tempdir().unwrap();
-    let lib = Library::open(dir.path()).unwrap();
+    let lib = Library::open(dir.path(), &dir.path().join(".history.db")).unwrap();
     (dir, JsoncvServer::new(lib))
 }
 

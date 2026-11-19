@@ -37,7 +37,7 @@ impl From<CoreError> for ApiError {
             CoreError::Render(_) => "Render",
             CoreError::Io(_) => "Io",
             CoreError::Json(_) => "Json",
-            CoreError::Git(_) => "Git",
+            CoreError::Db(_) => "Db",
         };
         let message = e.to_string();
         let errors = match e {
@@ -67,7 +67,7 @@ impl From<tauri::Error> for ApiError {
 
 type Res<T> = Result<T, ApiError>;
 
-/// Runs blocking file/Git work off the main thread. Sync Tauri commands run inline on the
+/// Runs blocking file/database work off the main thread. Sync Tauri commands run inline on the
 /// main thread, and core's `with_lock` can sleep-retry for up to 2 s.
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, ApiError> + Send + 'static,
@@ -269,7 +269,8 @@ pub async fn add_asset_from_path(state: State<'_, AppState>, path: PathBuf) -> R
 #[serde(rename_all = "camelCase")]
 pub struct LibraryConfig {
     library: String,
-    in_sync_folder: bool,
+    history: String,
+    history_in_sync_folder: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     fallback_from: Option<Fallback>,
 }
@@ -278,7 +279,8 @@ fn library_config(lib: &Library, fallback_from: Option<Fallback>) -> LibraryConf
     LibraryConfig {
         fallback_from,
         library: lib.root().to_string_lossy().into_owned(),
-        in_sync_folder: config::is_in_sync_folder(lib.root()),
+        history: lib.db().to_string_lossy().into_owned(),
+        history_in_sync_folder: config::is_in_sync_folder(lib.db()),
     }
 }
 
@@ -300,9 +302,13 @@ pub async fn set_library(
         ))
         .into());
     }
+    let db = state.lib().db().to_path_buf();
     let lib = blocking(move || {
-        let lib = Library::open(&path)?;
-        config::save(&config::Config { library: path })?;
+        let lib = Library::open(&path, &db)?;
+        config::save(&config::Config {
+            library: path,
+            ..config::load()
+        })?;
         Ok(lib)
     })
     .await?;
@@ -310,6 +316,39 @@ pub async fn set_library(
     let out = library_config(&lib, None);
     *lock(&state.lib) = lib;
     *lock(&state.fallback) = None;
+    *lock(&state.watcher) = watcher;
+    Ok(out)
+}
+
+/// Moves the history file into the folder `path` (or adopts a `history.db` already there).
+#[tauri::command]
+pub async fn set_history(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: PathBuf,
+) -> Res<LibraryConfig> {
+    if !path.is_absolute() {
+        return Err(CoreError::BadPath(format!(
+            "History folder must be absolute: {}",
+            path.display()
+        ))
+        .into());
+    }
+    let cur = state.lib();
+    // shortcut: a running MCP process keeps the old path until it restarts.
+    let lib = blocking(move || {
+        let db = jsoncv_core::history::move_db(cur.db(), &path)?;
+        let lib = Library::open(cur.root(), &db)?;
+        config::save(&config::Config {
+            history: Some(db),
+            ..config::load()
+        })?;
+        Ok(lib)
+    })
+    .await?;
+    let watcher = start_watcher(app, lib.clone());
+    let out = library_config(&lib, lock(&state.fallback).clone());
+    *lock(&state.lib) = lib;
     *lock(&state.watcher) = watcher;
     Ok(out)
 }
@@ -376,7 +415,7 @@ mod tests {
             kind(serde_json::from_str::<Value>("{").unwrap_err().into()),
             "Json"
         );
-        assert_eq!(kind(git2::Error::from_str("x").into()), "Git");
+        assert_eq!(kind(rusqlite::Error::InvalidQuery.into()), "Db");
     }
 
     #[test]

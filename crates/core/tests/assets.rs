@@ -4,7 +4,7 @@ use tempfile::TempDir;
 #[test]
 fn add_asset_dedupes_and_suffixes() {
     let d = TempDir::new().unwrap();
-    let lib = Library::open(d.path()).unwrap();
+    let lib = Library::open(d.path(), &d.path().join(".history.db")).unwrap();
     assert_eq!(
         lib.add_asset("my photo!.png", b"aaa", Author::You).unwrap(),
         "assets/myphoto.png"
@@ -26,10 +26,6 @@ fn add_asset_dedupes_and_suffixes() {
         std::fs::read(d.path().join("assets/myphoto-2.png")).unwrap(),
         b"bbb"
     );
-    let r = git2::Repository::open(d.path()).unwrap();
-    let c = r.head().unwrap().peel_to_commit().unwrap();
-    assert_eq!(c.message().unwrap(), "Added asset myphoto-3.png");
-    assert_eq!(c.author().name().unwrap(), "You");
     assert!(matches!(
         lib.add_asset("***", b"x", Author::You),
         Err(CoreError::BadPath(_))

@@ -6,7 +6,7 @@ const THEMES: [&str; 2] = ["builtin:classic", "builtin:two-column"];
 
 fn lib() -> (tempfile::TempDir, Library) {
     let d = tempfile::tempdir().unwrap();
-    let l = Library::open(d.path()).unwrap();
+    let l = Library::open(d.path(), &d.path().join(".history.db")).unwrap();
     (d, l)
 }
 

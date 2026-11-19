@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::assets::{inline_cv_assets, inline_theme_assets};
 use crate::coverage::{missing_fields, ThemeReport};
-use crate::history::{commit, with_lock};
 use crate::library::Library;
 use crate::{Author, CoreError};
 
@@ -182,7 +181,7 @@ impl Library {
         template: &str,
         css: &str,
         meta: &ThemeMeta,
-        author: Author,
+        _author: Author, // themes are not versioned
     ) -> Result<ThemeReport, CoreError> {
         if id.starts_with("builtin:") {
             return Err(CoreError::ReadOnly(format!(
@@ -191,8 +190,8 @@ impl Library {
         }
         let dir = self.theme_dir(id)?;
         let meta_json = serde_json::to_string_pretty(meta)? + "\n";
-        with_lock(self.root(), || {
-            self.sweep_external()?;
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
             std::fs::create_dir_all(&dir)?;
             let files = [
                 ("template.html.j2", template),
@@ -202,12 +201,6 @@ impl Library {
             for (f, body) in files {
                 write_atomic(&dir.join(f), body.as_bytes())?;
             }
-            let rels: Vec<String> = files
-                .iter()
-                .map(|(f, _)| format!("themes/{id}/{f}"))
-                .collect();
-            let paths: Vec<&Path> = rels.iter().map(Path::new).collect();
-            commit(self.root(), &paths, author, &format!("Saved theme {id}"))?;
             Ok(())
         })?;
         report(template)
@@ -217,15 +210,15 @@ impl Library {
         &self,
         id: &str,
         new_id: &str,
-        author: Author,
+        _author: Author, // themes are not versioned
     ) -> Result<ThemeInfo, CoreError> {
         let src = self.get_theme(id)?;
         if new_id.starts_with("builtin:") {
             return Err(CoreError::BadName(new_id.to_string()));
         }
         let dir = self.theme_dir(new_id)?;
-        with_lock(self.root(), || {
-            self.sweep_external()?;
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
             if dir.exists() {
                 return Err(CoreError::BadName(format!("Theme {new_id} already exists")));
             }
@@ -241,30 +234,9 @@ impl Library {
                     &dir.join("theme.json"),
                     (serde_json::to_string_pretty(&meta)? + "\n").as_bytes(),
                 )?;
-                let mut rels = vec![
-                    "template.html.j2".to_string(),
-                    "style.css".into(),
-                    "theme.json".into(),
-                ];
                 if !src.info.builtin {
-                    copy_tree(
-                        &self.theme_dir(id)?.join("assets"),
-                        &dir.join("assets"),
-                        "assets",
-                        &mut rels,
-                    )?;
+                    copy_tree(&self.theme_dir(id)?.join("assets"), &dir.join("assets"))?;
                 }
-                let rels: Vec<String> = rels
-                    .iter()
-                    .map(|r| format!("themes/{new_id}/{r}"))
-                    .collect();
-                let paths: Vec<&Path> = rels.iter().map(Path::new).collect();
-                commit(
-                    self.root(),
-                    &paths,
-                    author,
-                    &format!("Duplicated theme {id} as {new_id}"),
-                )?;
                 Ok(())
             })();
             if res.is_err() {
@@ -376,8 +348,8 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     res
 }
 
-/// Copies `src` into `dst` if it exists, pushing each file's path (relative to the theme dir) onto `rels`.
-fn copy_tree(src: &Path, dst: &Path, rel: &str, rels: &mut Vec<String>) -> std::io::Result<()> {
+/// Copies `src` into `dst` if it exists.
+fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
     let rd = match std::fs::read_dir(src) {
         Ok(rd) => rd,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -387,12 +359,10 @@ fn copy_tree(src: &Path, dst: &Path, rel: &str, rels: &mut Vec<String>) -> std::
     for e in rd {
         let e = e?;
         let name = e.file_name();
-        let r = format!("{rel}/{}", name.to_string_lossy());
         if e.file_type()?.is_dir() {
-            copy_tree(&e.path(), &dst.join(&name), &r, rels)?;
+            copy_tree(&e.path(), &dst.join(&name))?;
         } else {
             std::fs::copy(e.path(), dst.join(&name))?;
-            rels.push(r);
         }
     }
     Ok(())

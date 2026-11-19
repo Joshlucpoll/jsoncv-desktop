@@ -130,7 +130,7 @@ pub struct HistoryArgs {
 pub struct RestoreArgs {
     /// CV name: `main` or `tailored/<slug>`.
     pub name: String,
-    /// Commit id from cv_history. Restoring adds a new version; history is kept.
+    /// Version id (`commit`) from cv_history. Restoring adds a new version; history is kept.
     pub commit: String,
 }
 #[derive(Debug, Deserialize, JsonSchema)]

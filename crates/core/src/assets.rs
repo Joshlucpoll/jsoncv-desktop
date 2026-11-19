@@ -6,7 +6,6 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use regex::{Captures, Regex};
 use serde_json::Value;
 
-use crate::history::{commit, with_lock};
 use crate::library::Library;
 use crate::{Author, CoreError};
 
@@ -111,7 +110,7 @@ impl Library {
         &self,
         file_name: &str,
         bytes: &[u8],
-        author: Author,
+        _author: Author, // assets are not versioned
     ) -> Result<String, CoreError> {
         let name = sanitise(file_name);
         if name.is_empty() {
@@ -123,8 +122,8 @@ impl Library {
             return Err(CoreError::BadPath("Asset too large (max 20 MB)".into()));
         }
         let dir = self.root().join("assets");
-        with_lock(self.root(), || {
-            self.sweep_external()?;
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
             let (stem, ext) = match name.rfind('.') {
                 Some(i) => (&name[..i], &name[i..]),
                 None => (name.as_str(), ""),
@@ -156,13 +155,6 @@ impl Library {
                     let _ = std::fs::remove_file(&tmp);
                     return Err(e.into());
                 }
-                let rel = format!("assets/{final_name}");
-                commit(
-                    self.root(),
-                    &[Path::new(&rel)],
-                    author,
-                    &format!("Added asset {final_name}"),
-                )?;
             }
             Ok(format!("assets/{final_name}"))
         })

@@ -1,96 +1,85 @@
-use std::path::Path;
-use std::time::{Duration, Instant};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
+use rusqlite::{
+    params, Connection, ErrorCode, OptionalExtension, Transaction, TransactionBehavior,
+};
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::library::sha_hex;
 use crate::{library::Library, schema, Author, CoreError};
 
-/// Exclusive lock on `.git/jsoncv.lock`; retries every 50 ms for up to 2 s.
-#[doc(hidden)]
-pub fn with_lock<T>(root: &Path, f: impl FnOnce() -> Result<T, CoreError>) -> Result<T, CoreError> {
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(false)
-        .open(root.join(".git/jsoncv.lock"))?;
-    let mut lock = fd_lock::RwLock::new(file);
-    let start = Instant::now();
-    loop {
-        match lock.try_write() {
-            Ok(_guard) => return f(),
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                if start.elapsed() >= Duration::from_secs(2) {
-                    return Err(CoreError::Locked);
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(e) => return Err(e.into()),
-        }
+const SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS versions(
+    id INTEGER PRIMARY KEY,
+    library TEXT NOT NULL,
+    cv TEXT NOT NULL,
+    author TEXT NOT NULL,
+    message TEXT NOT NULL,
+    time_ms INTEGER NOT NULL,
+    sha TEXT,
+    body BLOB
+);
+CREATE INDEX IF NOT EXISTS versions_cv ON versions(library, cv, id);";
+
+/// How long a writer waits for another process (the app or an MCP agent) before `Locked`.
+const BUSY: Duration = Duration::from_secs(2);
+
+fn connect(db: &Path) -> Result<Connection, CoreError> {
+    let c = Connection::open(db)?;
+    c.busy_timeout(BUSY)?;
+    Ok(c)
+}
+
+/// Create the database file and table if missing.
+pub(crate) fn init(db: &Path) -> Result<(), CoreError> {
+    if let Some(dir) = db.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir)?;
+    }
+    connect(db)?.execute_batch(SCHEMA)?;
+    Ok(())
+}
+
+fn busy(e: rusqlite::Error) -> CoreError {
+    if e.sqlite_error_code() == Some(ErrorCode::DatabaseBusy) {
+        CoreError::Locked
+    } else {
+        e.into()
     }
 }
 
-/// Commit only `paths` (removal if gone) on top of HEAD; other staged files are untouched.
-/// Returns "" when nothing changed. Public so integration tests can reach it.
-#[doc(hidden)]
-pub fn commit(
-    root: &Path,
-    paths: &[&Path],
-    author: Author,
-    message: &str,
-) -> Result<String, CoreError> {
-    let repo = git2::Repository::open(root)?;
-    let parent = match repo.head() {
-        Ok(h) => Some(h.peel_to_commit()?),
-        Err(e) if e.code() == git2::ErrorCode::UnbornBranch => None,
-        Err(e) => return Err(e.into()),
-    };
-    let mut mem = git2::Index::new()?;
-    if let Some(p) = &parent {
-        mem.read_tree(&p.tree()?)?;
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
+}
+
+/// Move the history database into `dir` as `history.db` and return the new path.
+/// An existing `history.db` in `dir` is used as-is and the current file is left alone.
+pub fn move_db(from: &Path, dir: &Path) -> Result<PathBuf, CoreError> {
+    let to = dir.join("history.db");
+    if to == from || to.exists() {
+        return Ok(to);
     }
-    let mut real = repo.index()?;
-    for p in paths {
-        let rel = p.strip_prefix(root).unwrap_or(p);
-        let full = root.join(rel);
-        if full.exists() {
-            let id = repo.blob(&std::fs::read(&full)?)?;
-            let path = rel.to_string_lossy().replace('\\', "/").into_bytes();
-            mem.add(&git2::IndexEntry {
-                ctime: git2::IndexTime::new(0, 0),
-                mtime: git2::IndexTime::new(0, 0),
-                dev: 0,
-                ino: 0,
-                mode: 0o100644,
-                uid: 0,
-                gid: 0,
-                file_size: 0,
-                id,
-                flags: path.len().min(0xFFF) as u16,
-                flags_extended: 0,
-                path,
-            })?;
-            real.add_path(rel)?;
-        } else {
-            if mem.get_path(rel, 0).is_some() {
-                mem.remove_path(rel)?;
-            }
-            if real.get_path(rel, 0).is_some() {
-                real.remove_path(rel)?;
-            }
+    std::fs::create_dir_all(dir)?;
+    if from.exists() {
+        let mut c = connect(from)?;
+        // The write lock stops other processes committing while the bytes are copied.
+        let tx = c
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(busy)?;
+        let tmp = dir.join(format!(".history.db.tmp-{}", std::process::id()));
+        let res = std::fs::copy(from, &tmp).and_then(|_| std::fs::rename(&tmp, &to));
+        if let Err(e) = res {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e.into());
         }
+        drop(tx);
+        drop(c);
+        std::fs::remove_file(from)?;
     }
-    real.write()?;
-    let tree_id = mem.write_tree_to(&repo)?;
-    if parent.as_ref().is_some_and(|p| p.tree_id() == tree_id) {
-        return Ok(String::new());
-    }
-    let sig = git2::Signature::now(author.name(), "jsoncv@localhost")?;
-    let tree = repo.find_tree(tree_id)?;
-    let parents: Vec<&git2::Commit> = parent.iter().collect();
-    Ok(repo
-        .commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)?
-        .to_string())
+    Ok(to)
 }
 
 /// True when the file parses as JSON and passes the schema.
@@ -101,10 +90,8 @@ pub(crate) fn cv_valid(path: &Path) -> bool {
         .is_some_and(|v| schema::validate(&v).is_ok())
 }
 
-fn resolve<'a>(repo: &'a git2::Repository, commit: &str) -> Result<git2::Commit<'a>, CoreError> {
-    repo.revparse_single(commit)
-        .and_then(|o| o.peel_to_commit())
-        .map_err(|_| CoreError::NotFound(format!("commit {commit}")))
+fn parse_id(commit: &str) -> Option<i64> {
+    commit.strip_prefix('v').unwrap_or(commit).parse().ok()
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -113,15 +100,6 @@ pub struct Version {
     pub author: String,
     pub message: String,
     pub time_ms: i64,
-}
-
-fn managed(p: &str) -> bool {
-    let cv = |s: &str| s.ends_with(".cv.json") && !s.contains('/');
-    p == ".gitignore"
-        || p.starts_with("themes/")
-        || p.starts_with("assets/")
-        || cv(p)
-        || p.strip_prefix("tailored/").is_some_and(cv)
 }
 
 fn canonical(v: &Value) -> Value {
@@ -152,105 +130,184 @@ fn pretty(v: &Value) -> Result<String, CoreError> {
 }
 
 impl Library {
-    /// Commit external changes to managed paths as `External`. Call inside `with_lock`.
-    pub fn sweep_external(&self) -> Result<Option<String>, CoreError> {
-        let repo = git2::Repository::open(self.root())?;
-        let mut opts = git2::StatusOptions::new();
-        opts.include_untracked(true).recurse_untracked_dirs(true);
-        let mut paths = vec![];
-        for e in repo.statuses(Some(&mut opts))?.iter() {
-            let Ok(p) = e.path() else { continue };
-            if !managed(p) {
+    /// Run `f` inside one write transaction. SQLite's lock serialises the app and MCP processes;
+    /// a writer that waits longer than 2 s gets `Locked`. Nothing is recorded if `f` fails.
+    pub fn locked<T>(
+        &self,
+        f: impl FnOnce(&Transaction) -> Result<T, CoreError>,
+    ) -> Result<T, CoreError> {
+        let mut c = connect(self.db())?;
+        let tx = c
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(busy)?;
+        let out = f(&tx)?;
+        tx.commit().map_err(busy)?;
+        Ok(out)
+    }
+
+    /// Newest version id of `name`, if any.
+    pub(crate) fn head(&self, c: &Connection, name: &str) -> Result<Option<i64>, CoreError> {
+        Ok(c.query_row(
+            "SELECT MAX(id) FROM versions WHERE library = ?1 AND cv = ?2",
+            params![self.id(), name],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Add a version unconditionally. `body` None marks the CV as deleted.
+    pub(crate) fn insert(
+        &self,
+        c: &Connection,
+        name: &str,
+        author: Author,
+        message: &str,
+        body: Option<&[u8]>,
+    ) -> Result<String, CoreError> {
+        c.execute(
+            "INSERT INTO versions(library, cv, author, message, time_ms, sha, body)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                self.id(),
+                name,
+                author.name(),
+                message,
+                now_ms(),
+                body.map(sha_hex),
+                body
+            ],
+        )?;
+        Ok(c.last_insert_rowid().to_string())
+    }
+
+    /// Add a version unless the content equals the newest one; returns "" when nothing changed.
+    pub(crate) fn record(
+        &self,
+        c: &Connection,
+        name: &str,
+        author: Author,
+        message: &str,
+        body: Option<&[u8]>,
+    ) -> Result<String, CoreError> {
+        let latest: Option<Option<String>> = c
+            .query_row(
+                "SELECT sha FROM versions WHERE library = ?1 AND cv = ?2 ORDER BY id DESC LIMIT 1",
+                params![self.id(), name],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if latest.flatten() == body.map(sha_hex) {
+            return Ok(String::new());
+        }
+        self.insert(c, name, author, message, body)
+    }
+
+    /// Record outside changes to CV files. Call inside `locked`.
+    pub fn sweep_external(&self, tx: &Transaction) -> Result<Option<String>, CoreError> {
+        self.sweep(tx, Author::External, "External changes")
+    }
+
+    pub(crate) fn sweep(
+        &self,
+        tx: &Transaction,
+        author: Author,
+        message: &str,
+    ) -> Result<Option<String>, CoreError> {
+        let mut last = None;
+        for name in self.cv_names()? {
+            let Ok(path) = self.cv_path(&name) else {
+                continue;
+            };
+            // Broken files are skipped until they parse and validate again.
+            if !cv_valid(&path) {
                 continue;
             }
-            let full = self.root().join(p);
-            if p.ends_with(".cv.json") && full.exists() && !cv_valid(&full) {
-                continue;
+            let id = self.record(tx, &name, author, message, Some(&std::fs::read(&path)?))?;
+            if !id.is_empty() {
+                last = Some(id);
             }
-            paths.push(std::path::PathBuf::from(p));
         }
-        if paths.is_empty() {
-            return Ok(None);
+        let live: Vec<String> = tx
+            .prepare(
+                "SELECT v.cv FROM versions v
+                 WHERE v.library = ?1 AND v.body IS NOT NULL
+                   AND v.id = (SELECT MAX(id) FROM versions WHERE library = v.library AND cv = v.cv)",
+            )?
+            .query_map([self.id()], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        for name in live {
+            if self.cv_path(&name).is_ok_and(|p| !p.exists()) {
+                last = Some(self.insert(tx, &name, author, message, None)?);
+            }
         }
-        let refs: Vec<&Path> = paths.iter().map(|p| p.as_path()).collect();
-        let sha = commit(self.root(), &refs, Author::External, "External changes")?;
-        Ok((!sha.is_empty()).then_some(sha))
+        Ok(last)
     }
 
     pub fn sweep_external_locked(&self) -> Result<Option<String>, CoreError> {
-        with_lock(self.root(), || self.sweep_external())
+        self.locked(|tx| self.sweep_external(tx))
     }
 
+    /// Versions of `name`, newest first.
     pub fn history(&self, name: &str, limit: usize) -> Result<Vec<Version>, CoreError> {
-        let rel = format!("{name}.cv.json");
         self.cv_path(name)?;
-        let repo = git2::Repository::open(self.root())?;
-        let Ok(head) = repo.head() else {
-            return Ok(vec![]);
-        };
-        let blob = |c: &git2::Commit| {
-            c.tree()
-                .ok()
-                .and_then(|t| t.get_path(Path::new(&rel)).ok())
-                .map(|e| e.id())
-        };
-        let mut walk = repo.revwalk()?;
-        walk.push(head.peel_to_commit()?.id())?;
-        let mut out = vec![];
-        for id in walk {
-            if out.len() >= limit {
-                break;
-            }
-            let c = repo.find_commit(id?)?;
-            let prev = c.parents().next().and_then(|p| blob(&p));
-            if blob(&c) != prev {
-                out.push(Version {
-                    commit: c.id().to_string(),
-                    author: c.author().name().unwrap_or("").to_string(),
-                    message: c.message().unwrap_or("").trim_end().to_string(),
-                    time_ms: c.time().seconds() * 1000,
-                });
-            }
-        }
-        Ok(out)
+        let c = connect(self.db())?;
+        let rows = c
+            .prepare(
+                "SELECT id, author, message, time_ms FROM versions
+                 WHERE library = ?1 AND cv = ?2 ORDER BY id DESC LIMIT ?3",
+            )?
+            .query_map(
+                params![self.id(), name, limit.min(i64::MAX as usize) as i64],
+                |r| {
+                    Ok(Version {
+                        commit: r.get::<_, i64>(0)?.to_string(),
+                        author: r.get(1)?,
+                        message: r.get(2)?,
+                        time_ms: r.get(3)?,
+                    })
+                },
+            )?
+            .collect::<Result<_, _>>()?;
+        Ok(rows)
     }
 
     pub fn read_cv_at(&self, name: &str, commit: &str) -> Result<Value, CoreError> {
         self.cv_path(name)?;
-        let repo = git2::Repository::open(self.root())?;
-        let tree = resolve(&repo, commit)?.tree()?;
-        let entry = tree
-            .get_path(Path::new(&format!("{name}.cv.json")))
-            .map_err(|_| CoreError::NotFound(format!("{name} at {commit}")))?;
-        let blob = repo.find_blob(entry.id())?;
-        let v = serde_json::from_slice(blob.content())?;
-        Ok(v)
+        let missing = || CoreError::NotFound(format!("{name} at {commit}"));
+        let id = parse_id(commit).ok_or_else(missing)?;
+        let body: Option<Vec<u8>> = connect(self.db())?
+            .query_row(
+                "SELECT body FROM versions WHERE id = ?1 AND library = ?2 AND cv = ?3",
+                params![id, self.id(), name],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        Ok(serde_json::from_slice(&body.ok_or_else(missing)?)?)
     }
 
     pub fn diff(&self, name: &str, commit: &str) -> Result<String, CoreError> {
         let old = pretty(&self.read_cv_at(name, commit)?)?;
         let new = pretty(&self.read_cv(name)?.cv)?;
-        let id = resolve(&git2::Repository::open(self.root())?, commit)?
-            .id()
-            .to_string();
-        Ok(unified(&old, &new, &id[..7], "current"))
+        let id = parse_id(commit).unwrap_or_default();
+        Ok(unified(&old, &new, &format!("v{id}"), "current"))
     }
 
-    /// What `commit` changed in this CV: the file's previous version (empty if none) against `commit`.
+    /// What `commit` changed in this CV: its previous version (empty if none) against `commit`.
     pub fn change_diff(&self, name: &str, commit: &str) -> Result<String, CoreError> {
-        let id = resolve(&git2::Repository::open(self.root())?, commit)?
-            .id()
-            .to_string();
-        let new = pretty(&self.read_cv_at(name, &id)?)?;
-        let versions = self.history(name, usize::MAX)?;
-        let prev = versions
-            .iter()
-            .position(|v| v.commit == id)
-            .and_then(|i| versions.get(i + 1));
+        let new = pretty(&self.read_cv_at(name, commit)?)?;
+        let id = parse_id(commit).unwrap_or_default();
+        let prev: Option<(i64, Option<Vec<u8>>)> = connect(self.db())?
+            .query_row(
+                "SELECT id, body FROM versions WHERE library = ?1 AND cv = ?2 AND id < ?3
+                 ORDER BY id DESC LIMIT 1",
+                params![self.id(), name, id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
         let (old, from) = match prev {
-            Some(p) => (pretty(&self.read_cv_at(name, &p.commit)?)?, &p.commit[..7]),
-            None => (String::new(), "empty"),
+            Some((p, Some(body))) => (pretty(&serde_json::from_slice(&body)?)?, format!("v{p}")),
+            _ => (String::new(), "empty".to_string()),
         };
-        Ok(unified(&old, &new, from, &id[..7]))
+        Ok(unified(&old, &new, &from, &format!("v{id}")))
     }
 }

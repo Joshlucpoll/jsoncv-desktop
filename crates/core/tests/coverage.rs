@@ -5,7 +5,7 @@ use jsoncv_core::{Author, CoreError};
 
 fn lib() -> (tempfile::TempDir, Library) {
     let d = tempfile::tempdir().unwrap();
-    let l = Library::open(d.path()).unwrap();
+    let l = Library::open(d.path(), &d.path().join(".history.db")).unwrap();
     (d, l)
 }
 
@@ -146,16 +146,6 @@ fn save_theme_with_broken_template_still_saves() {
             .unwrap()
             .ends_with("}\n")
     );
-    let msg = git2::Repository::open(d.path())
-        .unwrap()
-        .head()
-        .unwrap()
-        .peel_to_commit()
-        .unwrap()
-        .message()
-        .unwrap()
-        .to_string();
-    assert_eq!(msg, "Saved theme mine");
     assert!(lib.theme_report("mine").unwrap().render_error.is_some());
 }
 
@@ -191,15 +181,4 @@ fn duplicate_theme_copies_builtin_and_assets() {
         std::fs::read_to_string(d.path().join("themes/again/assets/f.txt")).unwrap(),
         "hi"
     );
-    let repo = git2::Repository::open(d.path()).unwrap();
-    let head = repo.head().unwrap().peel_to_commit().unwrap();
-    assert_eq!(
-        head.message().unwrap(),
-        "Duplicated theme my-classic as again"
-    );
-    assert!(head
-        .tree()
-        .unwrap()
-        .get_path(std::path::Path::new("themes/again/assets/f.txt"))
-        .is_ok());
 }
