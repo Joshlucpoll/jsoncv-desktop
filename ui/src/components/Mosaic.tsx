@@ -13,12 +13,11 @@ const KEY = [
 ]
 const C = 3 // tessera pitch in px
 const GROUT = 0.6
-const PERIODS = 9 // whole periods only, so the key never ends cut in half; 9 fill the 240px sidebar
 
-/** A meander frieze of whole key periods. */
-export function Meander() {
+/** A meander frieze of `periods` whole key periods, so the key never ends cut in half. */
+export function Meander({ periods }: { periods: number }) {
   return (
-    <svg className="meander" width={PERIODS * KEY[0].length * C} height={KEY.length * C} aria-hidden="true">
+    <svg className="meander" width={periods * KEY[0].length * C} height={KEY.length * C} aria-hidden="true">
       <defs>
         <pattern id="meander" width={KEY[0].length * C} height={KEY.length * C} patternUnits="userSpaceOnUse">
           {KEY.flatMap((row, y) =>

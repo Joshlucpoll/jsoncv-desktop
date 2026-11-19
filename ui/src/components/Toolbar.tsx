@@ -7,7 +7,7 @@ import { Icon } from './Icon.tsx'
 
 type Props = {
   name: string; theme: string | null; themes: ThemeInfo[]; onTheme: (id: string) => void; onManageThemes: () => void
-  editing: boolean; viewing: boolean; exporting: boolean; onEdit: () => void; onExport: (f: ExportFormat) => void; onPrint: () => void
+  editing: boolean; exporting: boolean; onEdit: () => void; onExport: (f: ExportFormat) => void; onPrint: () => void
 }
 
 /** Open state, outside-click close and arrow-key focus for a popup menu. */
@@ -33,12 +33,12 @@ function useMenu() {
   return { open, setOpen, box, onKeyDown }
 }
 
-function ExportMenu({ disabled, busy, onExport, onPrint }: { disabled: boolean; busy: boolean; onExport: (f: ExportFormat) => void; onPrint: () => void }) {
+function ExportMenu({ busy, onExport, onPrint }: { busy: boolean; onExport: (f: ExportFormat) => void; onPrint: () => void }) {
   const { open, setOpen, box, onKeyDown } = useMenu()
   const pick = (go: () => void) => () => { setOpen(false); go() }
   return (
     <div className="popup" ref={box} onKeyDown={onKeyDown}>
-      <button className="trigger" aria-haspopup="menu" aria-expanded={open} disabled={disabled || busy} title={disabled ? 'Go back to the current version to export' : undefined} onClick={() => setOpen((o) => !o)}>
+      <button className="trigger" aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen((o) => !o)}>
         {busy ? <><span className="spinner" aria-hidden="true" /> Exporting…</> : <>Export <Icon name="chevronDown" size={12} /></>}
       </button>
       {open && (
@@ -100,14 +100,14 @@ function ThemePicker({ cv, value, themes, onPick, onManage }: { cv: string; valu
   )
 }
 
-export function Toolbar({ name, theme, themes, onTheme, onManageThemes, editing, viewing, exporting, onEdit, onExport, onPrint }: Props) {
+export function Toolbar({ name, theme, themes, onTheme, onManageThemes, editing, exporting, onEdit, onExport, onPrint }: Props) {
   return (
-    <header className="toolbar">
-      <h1>{cvTitle(name)}</h1>
-      <span className="spacer" />
+    <header className="toolbar" data-tauri-drag-region>
+      <h1 data-tauri-drag-region>{cvTitle(name)}</h1>
+      <span className="spacer" data-tauri-drag-region />
       <ThemePicker cv={name} value={theme ?? DEFAULT_THEME} themes={themes} onPick={onTheme} onManage={onManageThemes} />
-      <button className={editing ? 'on' : undefined} aria-pressed={editing} disabled={viewing} title={viewing ? 'Go back to the current version to edit' : undefined} onClick={onEdit}>Edit <kbd>{MOD}E</kbd></button>
-      <ExportMenu disabled={viewing} busy={exporting} onExport={onExport} onPrint={onPrint} />
+      <button className={editing ? 'on' : undefined} aria-pressed={editing} onClick={onEdit}>Edit <kbd>{MOD}E</kbd></button>
+      <ExportMenu busy={exporting} onExport={onExport} onPrint={onPrint} />
     </header>
   )
 }

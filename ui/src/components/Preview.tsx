@@ -52,7 +52,8 @@ export function Preview({ cv, commit, theme, reloadKey, size }: Props) {
   useLayoutEffect(() => { pending.current = null }, [scale, off])
   useEffect(() => {
     // The preview is a canvas: the page moves by transform, not by native scroll.
-    // Pinch zooms around the pointer; a plain wheel or two-finger scroll pans. placePage keeps a page that fits centred.
+    // Pinch zooms around the pointer; a plain wheel or two-finger scroll pans, and so does dragging with the mouse.
+    // placePage keeps a page that fits centred.
     const el = box.current!
     const now = () => {
       if (pending.current) return pending.current
@@ -83,10 +84,23 @@ export function Preview({ cv, commit, theme, reloadKey, size }: Props) {
     }
     const start = (e: Event) => { e.preventDefault(); base = now().scale }
     const change = (e: Event) => { e.preventDefault(); zoomAt(base * (e as MouseEvent & { scale: number }).scale, e as MouseEvent) }
-    el.addEventListener('wheel', wheel, { passive: false })
-    el.addEventListener('gesturestart', start)
-    el.addEventListener('gesturechange', change)
-    return () => { el.removeEventListener('wheel', wheel); el.removeEventListener('gesturestart', start); el.removeEventListener('gesturechange', change) }
+    let grab: { x: number; y: number; at: { scale: number; x: number; y: number } } | null = null
+    const down = (e: PointerEvent) => {
+      if (e.button !== 0) return
+      e.preventDefault()
+      grab = { x: e.clientX, y: e.clientY, at: now() }
+      el.setPointerCapture(e.pointerId)
+      el.classList.add('grabbing')
+    }
+    const move = (e: PointerEvent) => {
+      if (!grab) return
+      const { at } = grab
+      set({ scale: at.scale, x: at.x + e.clientX - grab.x, y: at.y + e.clientY - grab.y })
+    }
+    const up = () => { grab = null; el.classList.remove('grabbing') }
+    const listeners = [['wheel', wheel], ['gesturestart', start], ['gesturechange', change], ['pointerdown', down], ['pointermove', move], ['pointerup', up], ['pointercancel', up]] as const
+    for (const [t, f] of listeners) el.addEventListener(t, f as EventListener, t === 'wheel' ? { passive: false } : undefined)
+    return () => { for (const [t, f] of listeners) el.removeEventListener(t, f as EventListener) }
   }, [])
   useEffect(() => {
     // ⌘+ / ⌘- zoom, ⌘0 actual size, ⌘9 fit width (Preview.app's keys).

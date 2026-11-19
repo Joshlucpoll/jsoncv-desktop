@@ -34,9 +34,11 @@ const versions = [
   ver('v7', 'You', 'Create main', 20 * 86_400_000),
 ]
 
+const appData = '~/Library/Application Support/dev.jsoncv.jsoncv-desktop/history.db'
+const synced = (p: string) => /iCloud|Mobile Documents|Dropbox/.test(p)
 let cfg: Record<string, unknown> = new URLSearchParams(location.search).has('sync')
-  ? { library: '~/Library/Mobile Documents/com~apple~CloudDocs/CVs', inSyncFolder: true }
-  : { library: '~/Documents/CVs', inSyncFolder: false }
+  ? { library: '~/Documents/CVs', history: '~/Library/Mobile Documents/com~apple~CloudDocs/history.db', historyInSyncFolder: true }
+  : { library: '~/Documents/CVs', history: appData, historyInSyncFolder: false }
 
 mockIPC(
   (cmd, args) => {
@@ -45,7 +47,8 @@ mockIPC(
       case 'list_cvs': return cvs
       case 'list_themes': return themes
       case 'get_config': return cfg
-      case 'set_library': cfg = { library: a.path, inSyncFolder: /iCloud|Mobile Documents/.test(a.path) }; return cfg
+      case 'set_library': cfg = { ...cfg, library: a.path }; return cfg
+      case 'set_history': { const h = `${a.path}/history.db`; cfg = { ...cfg, history: h, historyInSyncFolder: synced(h) }; return cfg }
       case 'theme_report': return a.id === 'my-theme'
         ? { render_error: null, missing: ['awards', 'work[].highlights', 'basics.location.region'] }
         : { render_error: null, missing: [] }
@@ -64,7 +67,7 @@ mockIPC(
       case 'get_schema': return schema
       case 'read_cv': return { name: a.name, cv: sampleCv, base: 'h1' }
       case 'history': return [...versions]
-      case 'restore': versions.unshift({ commit: `r${versions.length}`, author: 'You', message: 'Restore version', time_ms: Date.now() }); return { commit: 'r', base: 'h3' }
+      case 'restore': { const commit = `r${versions.length}`; versions.unshift({ commit, author: 'You', message: `Restored version ${a.commit}`, time_ms: Date.now() }); return { commit, base: 'h3' } }
       case 'diff': return '--- a/main.cv.json\n+++ b/main.cv.json\n@@ -2,3 +2,3 @@\n   "basics": {\n-    "name": "Ada Lovelace",\n+    "name": "Ada King",\n     "label": "Mathematician"'
       case 'change_diff': return '--- empty\n+++ v3\n@@ -5,1 +5,1 @@\n-    "summary": "Engineer."\n+    "summary": "Engineer who ships payments infrastructure."'
       case 'preview_html': return fetch('/dev-preview.html').then((r) => r.text())

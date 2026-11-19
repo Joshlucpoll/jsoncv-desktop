@@ -11,7 +11,7 @@ export type ThemeReport = { render_error: { message: string; line: number | null
 export type SchemaError = { path: string; message: string }
 export type ApiError = { kind: string; message: string; errors?: SchemaError[] }
 export type ExportFormat = 'pdf' | 'html' | 'json'
-export type LibraryConfig = { library: string; inSyncFolder: boolean; fallbackFrom?: { path: string; message: string } }
+export type LibraryConfig = { library: string; history: string; historyInSyncFolder: boolean; fallbackFrom?: { path: string; message: string } }
 
 /** Dev-only: browser run with `?mock` serves a static page instead of the preview scheme. */
 export const MOCK = import.meta.env.DEV && new URLSearchParams(location.search).has('mock')
@@ -43,6 +43,8 @@ export const printCv = (name: string) => invoke<void>('print_cv', { name })
 export const addAssetFromPath = (path: string) => invoke<string>('add_asset_from_path', { path })
 export const getConfig = () => invoke<LibraryConfig>('get_config')
 export const setLibrary = (path: string) => invoke<LibraryConfig>('set_library', { path })
+/** Moves the history file into the folder `path`, or adopts a history.db already there. */
+export const setHistory = (path: string) => invoke<LibraryConfig>('set_history', { path })
 export const reveal = (path: string) => invoke<void>('reveal', { path })
 export const binaryPath = () => invoke<string>('binary_path')
 export const themeDirPath = (id: string) => invoke<string>('theme_dir_path', { id })

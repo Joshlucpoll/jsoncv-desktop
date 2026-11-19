@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { type LibraryConfig } from '../api.ts'
+import { type LibraryConfig, type ThemeInfo, reveal } from '../api.ts'
+import { MOD, revealLabel } from '../lib/platform.ts'
+import { ThemeRow } from './ThemesView.tsx'
 
 const copy = (text: string) => navigator.clipboard?.writeText(text).catch(() => {})
 
@@ -12,21 +14,55 @@ function Snippet({ label, text }: { label: string; text: string }) {
   )
 }
 
-type Props = { config?: LibraryConfig; binary: string; onChange: () => void; onClose: () => void }
+function PathRow({ label, help, path, onChange, onError }: { label: string; help: string; path?: string; onChange: () => void; onError: (e: unknown) => void }) {
+  return (
+    <div className="setting">
+      <div className="setting-label"><strong>{label}</strong><span className="muted">{help}</span></div>
+      <div className="lib-row">
+        <code title={path}>{path ?? 'Unknown (could not load settings)'}</code>
+        {path && <button onClick={() => reveal(path).catch(onError)}>{revealLabel}</button>}
+        <button onClick={onChange}>Change…</button>
+      </div>
+    </div>
+  )
+}
 
-export function Settings({ config, binary, onChange, onClose }: Props) {
+type Props = {
+  config?: LibraryConfig; binary: string; themes: ThemeInfo[]; reloadKey: number; focusThemes?: boolean
+  onChange: () => void; onChangeHistory: () => void; onThemesChanged: () => void; onError: (e: unknown) => void; onClose: () => void
+}
+
+export function Settings({ config, binary, themes, reloadKey, focusThemes, onChange, onChangeHistory, onThemesChanged, onError, onClose }: Props) {
   const ref = useRef<HTMLButtonElement>(null)
-  useEffect(() => ref.current?.focus(), [])
+  const themesRef = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    ref.current?.focus()
+    if (focusThemes) themesRef.current?.scrollIntoView({ block: 'start' })
+  }, [focusThemes])
   const desktop = JSON.stringify({ mcpServers: { jsoncv: { command: binary, args: ['mcp'] } } }, null, 2)
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
       <div className="dialog settings" role="dialog" aria-modal="true" aria-label="Settings">
         <header><strong>Settings</strong><span className="spacer" /><button ref={ref} onClick={onClose}>Done</button></header>
-        <h3>Library</h3>
-        <div className="lib-row"><code>{config?.library ?? 'Unknown (could not load settings)'}</code><button onClick={onChange}>Change…</button></div>
-        {config?.inSyncFolder && (
-          <p className="banner-inline" role="alert">This folder is synced by iCloud or Dropbox. Syncing can corrupt the CV history. Pick a folder outside synced storage.</p>
+
+        <h3>Storage</h3>
+        <PathRow
+          label="CV folder" path={config?.library} onChange={onChange} onError={onError}
+          help="Where your CVs, themes and assets live. Any folder works, including iCloud Drive or Dropbox."
+        />
+        <PathRow
+          label="Undo history" path={config?.history} onChange={onChangeHistory} onError={onError}
+          help={`Past versions, so ${MOD}Z and ${MOD}⇧Z can undo and redo changes by you or an agent.`}
+        />
+        {config?.historyInSyncFolder && (
+          <p className="banner-inline" role="alert">This file is in iCloud or Dropbox. Syncing can corrupt the history if two Macs write to it.</p>
         )}
+
+        <h3 ref={themesRef}>Themes</h3>
+        <div className="theme-rows">
+          {themes.map((t) => <ThemeRow key={t.id} theme={t} reloadKey={reloadKey} onDuplicated={onThemesChanged} onError={onError} />)}
+        </div>
+
         <h3>Connect an AI agent (MCP)</h3>
         <Snippet label="Claude Code" text={`claude mcp add jsoncv -- "${binary}" mcp`} />
         <Snippet label="Claude Desktop" text={desktop} />
