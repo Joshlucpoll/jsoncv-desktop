@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import type { CvInfo } from '../api.ts'
-import { groupCvs, pickDefault } from './sidebar.ts'
+import { cvFileChanged, groupCvs, pickDefault } from './sidebar.ts'
 
 const cv = (name: string, over: Partial<CvInfo> = {}): CvInfo =>
   ({ name, folder: null, pin: null, theme: null, continuous: false, modified_ms: 0, error: null, ...over })
@@ -31,4 +31,12 @@ test('pickDefault picks most recently modified', () => {
 
 test('pickDefault returns undefined for no CVs', () => {
   expect(pickDefault([])).toBeUndefined()
+})
+
+test('cvFileChanged matches the CV file in any folder', () => {
+  expect(cvFileChanged(['cvs/stripe.cv.json'], 'stripe')).toBe(true)
+  expect(cvFileChanged(['cvs/jobs/stripe.cv.json'], 'stripe')).toBe(true)
+  expect(cvFileChanged(['cvs/my-stripe.cv.json'], 'stripe')).toBe(false)
+  expect(cvFileChanged(['themes/x/style.css'], 'stripe')).toBe(false)
+  expect(cvFileChanged(['cvs/a.cv.json'], '')).toBe(false)
 })

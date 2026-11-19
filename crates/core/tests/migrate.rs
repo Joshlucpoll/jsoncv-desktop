@@ -166,3 +166,30 @@ fn deleted_cv_rows_renamed() {
     assert_eq!(rows(&d, "gone"), 2);
     assert!(!d.path().join("cvs/gone.cv.json").exists());
 }
+
+#[test]
+fn concurrent_opens_both_succeed() {
+    // The app and an MCP server can start together on an old library; both opens must work.
+    for _ in 0..20 {
+        let d = TempDir::new().unwrap();
+        old_library(&d);
+        for i in 0..30 {
+            put(&d, &format!("tailored/t{i}.cv.json"), &cv("T"));
+        }
+        let root = d.path().to_path_buf();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(4));
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                let (root, b) = (root.clone(), barrier.clone());
+                std::thread::spawn(move || {
+                    b.wait();
+                    Library::open(&root, &root.join(".history.db")).map(|_| ())
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap().unwrap();
+        }
+        assert!(d.path().join("cvs/t29.cv.json").exists());
+    }
+}

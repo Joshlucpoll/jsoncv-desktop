@@ -12,6 +12,7 @@ import { ConflictBanner } from './ConflictBanner.tsx'
 import { CvForm, type Reveal } from './CvForm.tsx'
 import { DiffView } from './DiffView.tsx'
 import { Icon } from './Icon.tsx'
+import { cvFileChanged } from '../lib/sidebar.ts'
 
 const SAVE_DELAY_MS = 1000
 
@@ -199,7 +200,7 @@ export function EditPanel({ name, onClose, initialTab, tabRequest, onTab, reveal
 
   useEffect(() => {
     const un = onLibraryChanged((paths) => {
-      if (!paths.includes(`${name}.cv.json`)) return
+      if (!cvFileChanged(paths, name)) return
       if (busy_()) {
         diskChanged.current = true
         return

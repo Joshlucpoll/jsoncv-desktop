@@ -157,3 +157,33 @@ fn rename_folder_moves_cvs() {
         Some("new")
     );
 }
+
+#[test]
+fn finder_folder_with_any_name_works() {
+    let (d, lib) = setup();
+    // Folders made in Finder need not follow the slug rule.
+    std::fs::create_dir(d.path().join("cvs/Job Apps")).unwrap();
+    std::fs::write(d.path().join("cvs/Job Apps/a.cv.json"), "{}").unwrap();
+    assert_eq!(lib.list_folders().unwrap(), ["Job Apps"]);
+    lib.rename_cv("a", "b", Author::You).unwrap();
+    assert!(d.path().join("cvs/Job Apps/b.cv.json").exists());
+    lib.duplicate_cv("c", "b", Author::You).unwrap();
+    assert!(d.path().join("cvs/Job Apps/c.cv.json").exists());
+    lib.move_cv("my-cv", Some("Job Apps")).unwrap();
+    assert!(d.path().join("cvs/Job Apps/my-cv.cv.json").exists());
+    lib.rename_folder("Job Apps", "jobs").unwrap();
+    assert!(d.path().join("cvs/jobs/b.cv.json").exists());
+    // New folders still follow the slug rule, and paths cannot escape cvs/.
+    assert!(matches!(
+        lib.create_folder("New Folder"),
+        Err(CoreError::BadName(_))
+    ));
+    assert!(matches!(
+        lib.move_cv("b", Some("../x")),
+        Err(CoreError::BadName(_))
+    ));
+    assert!(matches!(
+        lib.move_cv("b", Some("Not There")),
+        Err(CoreError::BadName(_))
+    ));
+}

@@ -20,24 +20,25 @@ fn free(slug: &str, taken: &HashSet<String>) -> String {
 pub(crate) fn migrate(lib: &Library) -> Result<(), CoreError> {
     let root = lib.root();
     let tailored = root.join("tailored");
-    // (old name, slug, file)
-    let mut old: Vec<(String, String, PathBuf)> = vec![];
-    if root.join("main.cv.json").is_file() {
-        old.push(("main".into(), "main".into(), root.join("main.cv.json")));
-    }
-    if let Ok(rd) = std::fs::read_dir(&tailored) {
-        let mut t: Vec<_> = rd
-            .filter_map(Result::ok)
-            .filter_map(|e| {
-                let f = e.file_name().to_string_lossy().into_owned();
-                let slug = f.strip_suffix(".cv.json")?.to_string();
-                Some((format!("tailored/{slug}"), slug, e.path()))
-            })
-            .collect();
-        t.sort();
-        old.extend(t);
-    }
     lib.locked(|tx| {
+        // Listed under the lock: another process opening this library may be moving the same files.
+        // (old name, slug, file)
+        let mut old: Vec<(String, String, PathBuf)> = vec![];
+        if root.join("main.cv.json").is_file() {
+            old.push(("main".into(), "main".into(), root.join("main.cv.json")));
+        }
+        if let Ok(rd) = std::fs::read_dir(&tailored) {
+            let mut t: Vec<_> = rd
+                .filter_map(Result::ok)
+                .filter_map(|e| {
+                    let f = e.file_name().to_string_lossy().into_owned();
+                    let slug = f.strip_suffix(".cv.json")?.to_string();
+                    Some((format!("tailored/{slug}"), slug, e.path()))
+                })
+                .collect();
+            t.sort();
+            old.extend(t);
+        }
         let mut taken: HashSet<String> = lib.cv_entries()?.into_iter().map(|e| e.0).collect();
         let mut moved: HashMap<String, String> = HashMap::new();
         for (name, slug, path) in &old {

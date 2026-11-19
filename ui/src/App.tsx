@@ -11,7 +11,7 @@ import { DiffView } from './components/DiffView.tsx'
 import { Toasts } from './components/Toasts.tsx'
 import { useToasts } from './lib/toasts.ts'
 import { type Cursor, step } from './lib/undo.ts'
-import { pickDefault } from './lib/sidebar.ts'
+import { cvFileChanged, pickDefault } from './lib/sidebar.ts'
 
 /** Waits for the core's sweep (2 s after an outside edit) to commit it, so that commit can be announced too. */
 const SWEEP_WAIT_MS = 2500
@@ -91,8 +91,7 @@ export default function App() {
       const themesChanged = paths.some((p) => p.startsWith('themes/'))
       if (themesChanged) reloadThemes()
       const cv = selectedRef.current
-      // A CV's file can sit in any folder; its name is the file name.
-      const cvChanged = !!cv && paths.some((p) => p.endsWith(`/${cv}.cv.json`))
+      const cvChanged = cvFileChanged(paths, cv)
       if (cvChanged) {
         void announce(cv)
         setTimeout(() => void announce(cv), SWEEP_WAIT_MS)
@@ -123,6 +122,10 @@ export default function App() {
   // No selection yet, or the selected CV is gone: open the most recently edited one ('' when there are none).
   const current = cvs.some((c) => c.name === selected) ? selected : (pickDefault(cvs) ?? '')
   const cv = cvs.find((c) => c.name === current)
+  // Keep the fallback once it is shown: otherwise a newer edit elsewhere would switch the open CV
+  // (and remount the editor, dropping a pending save) on the next list reload.
+  // oxlint-disable-next-line react/set-state-in-effect -- adopts the derived fallback once
+  useEffect(() => { if (current && current !== selected) setSelected(current) }, [current, selected])
   // The watcher callback must see the latest selection without re-subscribing.
   useEffect(() => {
     selectedRef.current = current

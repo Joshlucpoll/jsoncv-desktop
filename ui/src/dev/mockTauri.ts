@@ -96,5 +96,5 @@ mockWindows('main') // getCurrentWindow() needs window metadata
 // Simulates an agent edit over MCP: run __mockAgentEdit() in the console.
 ;(window as unknown as { __mockAgentEdit: () => void }).__mockAgentEdit = () => {
   versions.unshift(ver(`a${versions.length}`, 'Agent', 'Tightened summary', 0))
-  void emit('library-changed', { paths: ['main.cv.json'] })
+  void emit('library-changed', { paths: ['cvs/general.cv.json'] })
 }

@@ -216,16 +216,10 @@ impl Library {
         if !valid_slug(slug) {
             return Err(CoreError::BadName(slug.to_string()));
         }
-        if let Some(f) = folder.filter(|f| !valid_slug(f)) {
-            return Err(CoreError::BadName(f.to_string()));
-        }
+        let dir = self.folder_dir(folder)?;
         if self.cv_entries()?.iter().any(|e| e.0 == slug) {
             return Err(CoreError::BadName(format!("{slug} already exists")));
         }
-        let dir = match folder {
-            Some(f) => self.cvs_dir().join(f),
-            None => self.cvs_dir(),
-        };
         Ok(dir.join(format!("{slug}.cv.json")))
     }
 
@@ -538,10 +532,14 @@ impl Library {
         self.info(name)
     }
 
+    /// The folder `folder` (None: the top of `cvs/`). New folders must follow the slug rule; one
+    /// that already exists (perhaps made in Finder) is used whatever its name.
     fn folder_dir(&self, folder: Option<&str>) -> Result<PathBuf, CoreError> {
         match folder {
             None => Ok(self.cvs_dir()),
-            Some(f) if valid_slug(f) => Ok(self.cvs_dir().join(f)),
+            Some(f) if valid_slug(f) || self.list_folders()?.iter().any(|x| x == f) => {
+                Ok(self.cvs_dir().join(f))
+            }
             Some(f) => Err(CoreError::BadName(f.into())),
         }
     }

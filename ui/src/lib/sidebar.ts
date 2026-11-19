@@ -15,3 +15,6 @@ export function groupCvs(cvs: CvInfo[], folders: string[]) {
 /** The CV to open when none is selected: the most recently modified one. */
 export const pickDefault = (cvs: CvInfo[]): string | undefined =>
   cvs.reduce<CvInfo | undefined>((best, c) => (!best || c.modified_ms > best.modified_ms ? c : best), undefined)?.name
+
+/** Whether a `library-changed` path list touches CV `name`'s file, in whichever folder it sits. */
+export const cvFileChanged = (paths: string[], name: string) => !!name && paths.some((p) => p.endsWith(`/${name}.cv.json`))
