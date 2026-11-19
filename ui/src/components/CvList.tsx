@@ -191,7 +191,7 @@ export function CvList({ cvs, folders, loaded, selected, onSelect, onChanged, on
       <div key={`folder:${name}`} className="cv-row">
         <button className="item folder" aria-expanded={open} onClick={() => toggleFolder(name)}
           onContextMenu={(e) => { e.preventDefault(); openMenu(e.currentTarget, { kind: 'folder', name, empty, x: e.clientX, y: e.clientY }) }}>
-          <span className={`chevron${open ? ' open' : ''}`}><Icon name="chevron" size={12} /></span>
+          <span className={`chevron${open ? ' open' : ''}`}><Icon name="chevronRight" size={12} /></span>
           <Icon name="folder" size={13} />
           <span className="label">{name}</span>
         </button>
@@ -273,7 +273,7 @@ export function CvList({ cvs, folders, loaded, selected, onSelect, onChanged, on
             <Icon name="plus" size={12} /> New CV…
           </button>
           <button className="add-folder" title="New folder" aria-label="New folder" onClick={() => setCreating({ kind: 'folder' })}>
-            <Icon name="folder" size={13} />
+            <Icon name="folderPlus" size={14} />
           </button>
         </div>
       )}
