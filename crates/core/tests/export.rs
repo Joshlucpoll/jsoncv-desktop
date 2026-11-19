@@ -10,8 +10,8 @@ fn lib_with_photo() -> (tempfile::TempDir, Library) {
     std::fs::create_dir_all(d.path().join("assets")).unwrap();
     std::fs::write(d.path().join("assets/me.png"), b"\x89PNG\r\n\x1a\nfake").unwrap();
     let cv = json!({"basics":{"name":"Ada Lovelace","image":"assets/me.png"}});
-    let base = lib.read_cv("main").unwrap().base;
-    lib.replace_cv("main", cv, &base, Author::You, None)
+    let base = lib.read_cv("my-cv").unwrap().base;
+    lib.replace_cv("my-cv", cv, &base, Author::You, None)
         .unwrap();
     (d, lib)
 }
@@ -20,10 +20,10 @@ fn lib_with_photo() -> (tempfile::TempDir, Library) {
 async fn html_export_is_self_contained() {
     let (d, lib) = lib_with_photo();
     let p = lib
-        .export("main", ExportFormat::Html, Some("builtin:classic"))
+        .export("my-cv", ExportFormat::Html, Some("builtin:classic"))
         .await
         .unwrap();
-    assert_eq!(p, d.path().join("exports/main-classic.html"));
+    assert_eq!(p, d.path().join("exports/my-cv-classic.html"));
     let html = std::fs::read_to_string(p).unwrap();
     // minijinja autoescape writes the "/" in the data URI as &#x2f;, which browsers decode.
     assert!(
@@ -37,26 +37,20 @@ async fn html_export_is_self_contained() {
 #[tokio::test]
 async fn export_uses_effective_theme_and_flattens_name() {
     let (d, lib) = lib_with_photo();
-    lib.create_tailored("acme", "main", Author::You).unwrap();
-    let p = lib
-        .export("tailored/acme", ExportFormat::Html, None)
-        .await
-        .unwrap();
-    assert_eq!(p, d.path().join("exports/tailored-acme-classic.html"));
-    let g = lib
-        .export("tailored/acme", ExportFormat::Json, None)
-        .await
-        .unwrap();
-    assert_eq!(g, d.path().join("exports/tailored-acme.json"));
+    lib.create_tailored("acme", "my-cv", Author::You).unwrap();
+    let p = lib.export("acme", ExportFormat::Html, None).await.unwrap();
+    assert_eq!(p, d.path().join("exports/acme-classic.html"));
+    let g = lib.export("acme", ExportFormat::Json, None).await.unwrap();
+    assert_eq!(g, d.path().join("exports/acme.json"));
 }
 
 #[tokio::test]
 async fn json_export_matches_file() {
     let (d, lib) = lib_with_photo();
-    let p = lib.export("main", ExportFormat::Json, None).await.unwrap();
+    let p = lib.export("my-cv", ExportFormat::Json, None).await.unwrap();
     assert_eq!(
         std::fs::read(p).unwrap(),
-        std::fs::read(d.path().join("main.cv.json")).unwrap()
+        std::fs::read(d.path().join("cvs/my-cv.cv.json")).unwrap()
     );
 }
 
@@ -67,7 +61,7 @@ async fn pdf_export_writes_pdf() {
         return;
     }
     let (_d, lib) = lib_with_photo();
-    let p = lib.export("main", ExportFormat::Pdf, None).await.unwrap();
+    let p = lib.export("my-cv", ExportFormat::Pdf, None).await.unwrap();
     assert!(std::fs::read(&p).unwrap().starts_with(b"%PDF"));
     if let Ok(keep) = std::env::var("JSONCV_KEEP_PDF") {
         std::fs::copy(&p, keep).unwrap();
@@ -93,7 +87,7 @@ async fn export_json_rejects_bad_name() {
 async fn export_json_missing_cv_not_found() {
     let (_d, lib) = lib_with_photo();
     assert!(matches!(
-        lib.export("tailored/nope", ExportFormat::Json, None).await,
+        lib.export("nope", ExportFormat::Json, None).await,
         Err(jsoncv_core::CoreError::NotFound(_))
     ));
 }
@@ -193,7 +187,7 @@ async fn continuous_cv_exports_as_one_page() {
     let d = tempfile::tempdir().unwrap();
     let lib = Library::open(d.path(), &d.path().join(".history.db")).unwrap();
     lib.set_cv_meta(
-        "main",
+        "my-cv",
         "pageMode",
         Some("continuous".into()),
         Author::You,
@@ -203,14 +197,14 @@ async fn continuous_cv_exports_as_one_page() {
     assert!(lib.list_cvs().unwrap()[0].continuous);
     for theme in ["builtin:classic", "builtin:two-column"] {
         let p = lib
-            .export("main", ExportFormat::Pdf, Some(theme))
+            .export("my-cv", ExportFormat::Pdf, Some(theme))
             .await
             .unwrap();
         let s = String::from_utf8_lossy(&std::fs::read(p).unwrap()).into_owned();
         let pages = s.matches("/Type /Page").count() - s.matches("/Type /Pages").count();
         assert_eq!(pages, 1, "{theme}");
     }
-    lib.set_cv_meta("main", "pageMode", None, Author::You, "Paged")
+    lib.set_cv_meta("my-cv", "pageMode", None, Author::You, "Paged")
         .unwrap();
     assert!(!lib.list_cvs().unwrap()[0].continuous);
 }

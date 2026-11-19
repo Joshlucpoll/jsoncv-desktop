@@ -20,7 +20,10 @@ pub struct Library {
 pub struct CvInfo {
     pub name: String,
     pub theme: Option<String>,
-    pub tailored_from: Option<String>,
+    /// The subfolder of `cvs/` the file is in; None at the top level.
+    pub folder: Option<String>,
+    /// Position in `.jsoncv-pins.json`; None when not pinned.
+    pub pin: Option<usize>,
     /// `meta.pageMode == "continuous"`: one long page instead of paper-sized pages.
     pub continuous: bool,
     pub modified_ms: i64,
@@ -59,13 +62,10 @@ impl Library {
     /// Open (creating if needed) the CV folder `root`, with its history kept in the database `db`.
     pub fn open(root: &Path, db: &Path) -> Result<Library, CoreError> {
         std::fs::create_dir_all(root)?;
-        for d in ["tailored", "themes", "assets", "exports"] {
+        for d in ["cvs", "themes", "assets", "exports"] {
             std::fs::create_dir_all(root.join(d))?;
         }
-        let main = root.join("main.cv.json");
-        if !main.exists() {
-            std::fs::write(&main, SAMPLE)?;
-        }
+        let fresh = !root.join(".jsoncv-id").exists();
         let id = library_id(root)?;
         crate::history::init(db)?;
         let lib = Library {
@@ -73,6 +73,10 @@ impl Library {
             db: db.to_path_buf(),
             id,
         };
+        // Only a brand-new library gets the sample; an emptied one stays empty.
+        if fresh && lib.cv_entries()?.is_empty() {
+            std::fs::write(lib.cvs_dir().join("my-cv.cv.json"), SAMPLE)?;
+        }
         lib.locked(|tx| {
             if lib.cv_head_any(tx)?.is_none() {
                 lib.sweep(tx, Author::You, "Create library")?;
@@ -119,27 +123,114 @@ impl Library {
         )?)
     }
 
-    /// `main` plus every `tailored/*.cv.json`, including names that fail `cv_path`.
-    pub(crate) fn cv_names(&self) -> Result<Vec<String>, CoreError> {
-        let mut tailored = vec![];
-        for e in std::fs::read_dir(self.root.join("tailored"))? {
-            let f = e?.file_name().to_string_lossy().into_owned();
-            if let Some(slug) = f.strip_suffix(".cv.json") {
-                tailored.push(format!("tailored/{slug}"));
-            }
-        }
-        tailored.sort();
-        Ok(std::iter::once("main".to_string())
-            .chain(tailored)
-            .collect())
+    pub(crate) fn cvs_dir(&self) -> PathBuf {
+        self.root.join("cvs")
     }
 
+    /// Every `*.cv.json` in `cvs/` and its first-level subfolders, as (slug, folder, path),
+    /// including slugs that fail the name rule.
+    pub(crate) fn cv_entries(&self) -> Result<Vec<(String, Option<String>, PathBuf)>, CoreError> {
+        let mut out = vec![];
+        let mut scan = |dir: &Path, folder: Option<String>| -> Result<(), CoreError> {
+            let rd = match std::fs::read_dir(dir) {
+                Ok(rd) => rd,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+                Err(e) => return Err(e.into()),
+            };
+            for e in rd {
+                let e = e?;
+                let f = e.file_name().to_string_lossy().into_owned();
+                if let Some(slug) = f.strip_suffix(".cv.json") {
+                    if e.file_type()?.is_file() {
+                        out.push((slug.to_string(), folder.clone(), e.path()));
+                    }
+                }
+            }
+            Ok(())
+        };
+        scan(&self.cvs_dir(), None)?;
+        for f in self.list_folders()? {
+            scan(&self.cvs_dir().join(&f), Some(f))?;
+        }
+        out.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+        Ok(out)
+    }
+
+    /// Subfolders of `cvs/`, sorted, empty ones included.
+    pub fn list_folders(&self) -> Result<Vec<String>, CoreError> {
+        let mut out = vec![];
+        let rd = match std::fs::read_dir(self.cvs_dir()) {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+            Err(e) => return Err(e.into()),
+        };
+        for e in rd {
+            let e = e?;
+            let f = e.file_name().to_string_lossy().into_owned();
+            if !f.starts_with('.') && e.file_type()?.is_dir() {
+                out.push(f);
+            }
+        }
+        out.sort();
+        Ok(out)
+    }
+
+    /// Distinct CV slugs, sorted, including names that fail `cv_path`.
+    pub(crate) fn cv_names(&self) -> Result<Vec<String>, CoreError> {
+        let mut names: Vec<String> = self.cv_entries()?.into_iter().map(|e| e.0).collect();
+        names.dedup();
+        Ok(names)
+    }
+
+    /// The file of CV `name`, wherever it sits; `cvs/<name>.cv.json` when there is none yet.
     pub(crate) fn cv_path(&self, name: &str) -> Result<PathBuf, CoreError> {
-        let ok = name == "main" || name.strip_prefix("tailored/").is_some_and(valid_slug);
-        if !ok {
+        if !valid_slug(name) {
             return Err(CoreError::BadName(name.to_string()));
         }
-        Ok(self.root.join(format!("{name}.cv.json")))
+        let hits: Vec<_> = self
+            .cv_entries()?
+            .into_iter()
+            .filter(|e| e.0 == name)
+            .collect();
+        match hits.as_slice() {
+            [] => Ok(self.cvs_dir().join(format!("{name}.cv.json"))),
+            [one] => Ok(one.2.clone()),
+            [a, b, ..] => {
+                let at = |f: &Option<String>| format!("{}/", f.as_deref().unwrap_or("cvs"));
+                Err(CoreError::BadName(format!(
+                    "{name}.cv.json is in both {} and {}; rename or remove one",
+                    at(&a.1),
+                    at(&b.1)
+                )))
+            }
+        }
+    }
+
+    /// Where a new CV `slug` goes; fails if that slug is already used anywhere.
+    pub(crate) fn new_cv_path(
+        &self,
+        slug: &str,
+        folder: Option<&str>,
+    ) -> Result<PathBuf, CoreError> {
+        if !valid_slug(slug) {
+            return Err(CoreError::BadName(slug.to_string()));
+        }
+        if let Some(f) = folder.filter(|f| !valid_slug(f)) {
+            return Err(CoreError::BadName(f.to_string()));
+        }
+        if self.cv_entries()?.iter().any(|e| e.0 == slug) {
+            return Err(CoreError::BadName(format!("{slug} already exists")));
+        }
+        let dir = match folder {
+            Some(f) => self.cvs_dir().join(f),
+            None => self.cvs_dir(),
+        };
+        Ok(dir.join(format!("{slug}.cv.json")))
+    }
+
+    fn folder_of(&self, path: &Path) -> Option<String> {
+        let dir = path.parent()?;
+        (dir != self.cvs_dir()).then(|| dir.file_name().unwrap().to_string_lossy().into_owned())
     }
 
     pub fn read_cv(&self, name: &str) -> Result<CvDoc, CoreError> {
@@ -161,19 +252,26 @@ impl Library {
             let bad = |error: &str| CvInfo {
                 name: name.clone(),
                 theme: None,
-                tailored_from: None,
+                folder: None,
+                pin: None,
                 continuous: false,
                 modified_ms: 0,
                 error: Some(error.into()),
             };
-            let Ok(path) = self.cv_path(&name) else {
-                out.push(bad(
-                    "Invalid file name: use lowercase letters, digits and dashes",
-                ));
-                continue;
+            let path = match self.cv_path(&name) {
+                Ok(p) => p,
+                Err(CoreError::BadName(m)) if valid_slug(&name) => {
+                    out.push(bad(&m));
+                    continue;
+                }
+                Err(_) => {
+                    out.push(bad(
+                        "Invalid file name: use lowercase letters, digits and dashes",
+                    ));
+                    continue;
+                }
             };
             let Ok(meta) = std::fs::metadata(&path) else {
-                out.push(bad("main.cv.json is missing"));
                 continue;
             };
             let modified_ms = meta
@@ -184,7 +282,8 @@ impl Library {
             let mut info = CvInfo {
                 name: name.clone(),
                 theme: None,
-                tailored_from: None,
+                folder: self.folder_of(&path),
+                pin: None,
                 continuous: false,
                 modified_ms,
                 error: None,
@@ -202,7 +301,6 @@ impl Library {
                     }
                     let meta = &doc.cv["meta"];
                     info.theme = meta["theme"].as_str().map(String::from);
-                    info.tailored_from = meta["tailoredFrom"]["cv"].as_str().map(String::from);
                     info.continuous = meta["pageMode"] == "continuous";
                 }
             }
@@ -215,12 +313,12 @@ impl Library {
     fn write_locked(
         &self,
         tx: &rusqlite::Transaction,
+        path: &Path,
         name: &str,
         cv: &Value,
         author: Author,
         message: &str,
     ) -> Result<Saved, CoreError> {
-        let path = self.cv_path(name)?;
         schema::validate(cv).map_err(CoreError::Invalid)?;
         let bytes = (serde_json::to_string_pretty(cv)? + "\n").into_bytes();
         let tmp = path.with_file_name(format!(
@@ -254,7 +352,7 @@ impl Library {
     ) -> Result<Saved, CoreError> {
         self.locked(|tx| {
             self.sweep_external(tx)?;
-            self.write_locked(tx, name, cv, author, message)
+            self.write_locked(tx, &self.cv_path(name)?, name, cv, author, message)
         })
     }
 
@@ -272,7 +370,7 @@ impl Library {
             let msg = message
                 .map(String::from)
                 .unwrap_or_else(|| default_message(patch));
-            self.write_locked(tx, name, &cv, author, &msg)
+            self.write_locked(tx, &self.cv_path(name)?, name, &cv, author, &msg)
         })
     }
 
@@ -289,7 +387,14 @@ impl Library {
             if self.read_cv(name)?.base != base {
                 return Err(CoreError::Stale);
             }
-            self.write_locked(tx, name, &cv, author, message.unwrap_or("Replaced CV"))
+            self.write_locked(
+                tx,
+                &self.cv_path(name)?,
+                name,
+                &cv,
+                author,
+                message.unwrap_or("Replaced CV"),
+            )
         })
     }
 
@@ -344,7 +449,14 @@ impl Library {
             }
             json_patch::patch(&mut cv, &patch)
                 .map_err(|e| CoreError::PatchFailed(e.to_string()))?;
-            self.write_locked(tx, name, &cv, Author::You, &default_message(&patch))
+            self.write_locked(
+                tx,
+                &self.cv_path(name)?,
+                name,
+                &cv,
+                Author::You,
+                &default_message(&patch),
+            )
         })
     }
 
@@ -360,13 +472,11 @@ impl Library {
         from: &str,
         author: Author,
     ) -> Result<CvInfo, CoreError> {
-        let name = format!("tailored/{slug}");
-        let target = self.cv_path(&name)?;
+        let name = slug.to_string();
         self.locked(|tx| {
             self.sweep_external(tx)?;
-            if target.exists() {
-                return Err(CoreError::BadName(format!("{name} already exists")));
-            }
+            let folder = self.folder_of(&self.cv_path(from)?);
+            let target = self.new_cv_path(slug, folder.as_deref())?;
             let mut cv = self.read_cv(from)?.cv;
             let head = self
                 .head(tx, from)?
@@ -384,6 +494,7 @@ impl Library {
                 );
             self.write_locked(
                 tx,
+                &target,
                 &name,
                 &cv,
                 author,
@@ -410,16 +521,13 @@ impl Library {
         if name == "main" {
             return Err(CoreError::ReadOnly("main cannot be renamed".into()));
         }
-        let new_name = format!("tailored/{new_slug}");
-        let new = self.cv_path(&new_name)?;
+        let new_name = new_slug.to_string();
         self.locked(|tx| {
             self.sweep_external(tx)?;
             if !old.exists() {
                 return Err(CoreError::NotFound(name.into()));
             }
-            if new.exists() {
-                return Err(CoreError::BadName(format!("{new_name} already exists")));
-            }
+            let new = self.new_cv_path(new_slug, self.folder_of(&old).as_deref())?;
             std::fs::rename(&old, &new)?;
             // History follows the CV to its new name.
             tx.execute(
@@ -494,7 +602,7 @@ impl Library {
                 Some(v) => meta.insert(key.into(), v),
                 None => meta.remove(key),
             };
-            self.write_locked(tx, name, &cv, author, message)
+            self.write_locked(tx, &self.cv_path(name)?, name, &cv, author, message)
         })
     }
 }

@@ -78,24 +78,24 @@ fn themes_list_get_and_ids() {
 #[test]
 fn render_cv_uses_meta_theme_and_commit() {
     let (_d, lib) = setup("N={{ cv.basics.name }}");
-    lib.set_cv_theme("main", "t1", Author::You).unwrap();
-    assert!(lib.render_cv("main", None, None).unwrap().contains("N="));
-    let head = lib.history("main", 1).unwrap()[0].commit.clone();
-    let old_name = lib.read_cv("main").unwrap().cv["basics"]["name"]
+    lib.set_cv_theme("my-cv", "t1", Author::You).unwrap();
+    assert!(lib.render_cv("my-cv", None, None).unwrap().contains("N="));
+    let head = lib.history("my-cv", 1).unwrap()[0].commit.clone();
+    let old_name = lib.read_cv("my-cv").unwrap().cv["basics"]["name"]
         .as_str()
         .unwrap()
         .to_string();
     let p: json_patch::Patch =
         serde_json::from_value(json!([{"op":"replace","path":"/basics/name","value":"ZZNewName"}]))
             .unwrap();
-    lib.patch_cv("main", &p, Author::You, None).unwrap();
-    let old = lib.render_cv("main", Some("t1"), Some(&head)).unwrap();
+    lib.patch_cv("my-cv", &p, Author::You, None).unwrap();
+    let old = lib.render_cv("my-cv", Some("t1"), Some(&head)).unwrap();
     assert!(
         old.contains(&format!("N={old_name}")) && !old.contains("ZZNewName"),
         "{old}"
     );
     assert!(lib
-        .render_cv("main", None, None)
+        .render_cv("my-cv", None, None)
         .unwrap()
         .contains("N=ZZNewName"));
 }
@@ -104,7 +104,7 @@ fn render_cv_uses_meta_theme_and_commit() {
 fn render_cv_explicit_unknown_theme_errors() {
     let (_d, lib) = setup("x");
     assert!(matches!(
-        lib.render_cv("main", Some("nope"), None),
+        lib.render_cv("my-cv", Some("nope"), None),
         Err(CoreError::NotFound(_))
     ));
 }
@@ -115,8 +115,8 @@ fn render_cv_bad_meta_theme_attempts_classic_fallback() {
     let p: json_patch::Patch =
         serde_json::from_value(json!([{"op":"add","path":"/meta","value":{"theme":"My Theme"}}]))
             .unwrap();
-    lib.patch_cv("main", &p, Author::You, None).unwrap();
-    let out = lib.render_cv("main", None, None).unwrap();
+    lib.patch_cv("my-cv", &p, Author::You, None).unwrap();
+    let out = lib.render_cv("my-cv", None, None).unwrap();
     assert!(out.contains("<style>"), "{out}");
 }
 
@@ -126,10 +126,10 @@ fn render_cv_falls_back_to_classic_when_theme_missing() {
     let p: json_patch::Patch =
         serde_json::from_value(json!([{"op":"add","path":"/meta","value":{"theme":"gone"}}]))
             .unwrap();
-    lib.patch_cv("main", &p, Author::You, None).unwrap();
-    let cv = lib.read_cv("main").unwrap().cv;
+    lib.patch_cv("my-cv", &p, Author::You, None).unwrap();
+    let cv = lib.read_cv("my-cv").unwrap().cv;
     assert_eq!(
-        lib.render_cv("main", None, None).unwrap(),
+        lib.render_cv("my-cv", None, None).unwrap(),
         lib.render(&cv, "builtin:classic").unwrap()
     );
 }
@@ -158,11 +158,11 @@ fn render_neutralises_style_end_and_uppercase_head() {
 fn set_unknown_theme_rejected() {
     let (_d, lib) = setup("x");
     assert!(matches!(
-        lib.set_cv_theme("main", "nope", Author::You),
+        lib.set_cv_theme("my-cv", "nope", Author::You),
         Err(CoreError::NotFound(_))
     ));
     assert!(matches!(
-        lib.set_cv_theme("main", "builtin:nope", Author::You),
+        lib.set_cv_theme("my-cv", "builtin:nope", Author::You),
         Err(CoreError::NotFound(_))
     ));
 }

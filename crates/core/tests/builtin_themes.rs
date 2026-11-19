@@ -17,15 +17,14 @@ fn builtin_themes_render_sample() {
     for t in THEMES {
         let out = lib.render(&cv, t).unwrap_or_else(|e| panic!("{t}: {e}"));
         for needle in [
-            "Mara Lindqvist",
-            "Senior Firmware Engineer",
-            "Software Engineer",
+            "Richard Hendriks",
+            "Chief Technology Officer",
+            "Programmer",
             "Work",
             "Education",
             "Skills",
             "Projects",
-            "Mar 2021",
-            "Present",
+            "Jan 2018",
         ] {
             assert!(out.contains(needle), "{t} missing {needle}");
         }

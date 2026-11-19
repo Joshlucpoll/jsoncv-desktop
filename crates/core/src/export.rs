@@ -221,7 +221,7 @@ impl Library {
         let cv_path = self.cv_path(name)?;
         let dir = self.root().join("exports");
         std::fs::create_dir_all(&dir)?;
-        let flat = name.replace('/', "-");
+        let flat = name;
         if format == ExportFormat::Json {
             let out = dir.join(format!("{flat}.json"));
             let bytes = std::fs::read(&cv_path).map_err(|e| match e.kind() {

@@ -18,7 +18,7 @@ fn bad_date_fails_with_pointer() {
 #[test]
 fn meta_allows_extra_tooling_keys() {
     assert!(validate(
-        &json!({"meta":{"theme":"builtin:classic","tailoredFrom":{"cv":"main","commit":"abc"}}})
+        &json!({"meta":{"theme":"builtin:classic","tailoredFrom":{"cv":"my-cv","commit":"abc"}}})
     )
     .is_ok());
 }
