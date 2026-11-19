@@ -248,6 +248,7 @@ impl Library {
     }
 
     pub fn list_cvs(&self) -> Result<Vec<CvInfo>, CoreError> {
+        let pins = self.pins();
         let mut out = vec![];
         for name in self.cv_names()? {
             let bad = |error: &str| CvInfo {
@@ -284,7 +285,7 @@ impl Library {
                 name: name.clone(),
                 theme: None,
                 folder: self.folder_of(&path),
-                pin: None,
+                pin: pins.iter().position(|p| *p == name),
                 continuous: false,
                 modified_ms,
                 error: None,
@@ -590,6 +591,40 @@ impl Library {
         })
     }
 
+    fn pins_file(&self) -> PathBuf {
+        self.root.join(".jsoncv-pins.json")
+    }
+
+    /// Pinned slugs in pin order. A missing or unreadable file means none.
+    fn pins(&self) -> Vec<String> {
+        std::fs::read(self.pins_file())
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    }
+
+    fn write_pins(&self, pins: &[String]) -> Result<(), CoreError> {
+        let f = self.pins_file();
+        let tmp = f.with_file_name(format!(".jsoncv-pins.json.tmp-{}", std::process::id()));
+        std::fs::write(&tmp, serde_json::to_string(pins)? + "\n")?;
+        Ok(std::fs::rename(&tmp, &f)?)
+    }
+
+    /// Pins (at the end of the list) or unpins CV `name`.
+    pub fn set_pinned(&self, name: &str, pinned: bool) -> Result<(), CoreError> {
+        self.locked(|_| {
+            if !self.cv_path(name)?.exists() {
+                return Err(CoreError::NotFound(name.into()));
+            }
+            let mut pins = self.pins();
+            pins.retain(|p| p != name);
+            if pinned {
+                pins.push(name.to_string());
+            }
+            self.write_pins(&pins)
+        })
+    }
+
     fn info(&self, name: &str) -> Result<CvInfo, CoreError> {
         self.list_cvs()?
             .into_iter()
@@ -612,6 +647,12 @@ impl Library {
             }
             let new = self.new_cv_path(new_slug, self.folder_of(&old).as_deref())?;
             std::fs::rename(&old, &new)?;
+            let pins: Vec<String> = self
+                .pins()
+                .into_iter()
+                .map(|p| if p == name { new_name.clone() } else { p })
+                .collect();
+            self.write_pins(&pins)?;
             // History follows the CV to its new name.
             tx.execute(
                 "UPDATE versions SET cv = ?1 WHERE library = ?2 AND cv = ?3",
@@ -641,6 +682,9 @@ impl Library {
                 _ => e.into(),
             })?;
             self.record(tx, name, author, &format!("Deleted {name}"), None)?;
+            let mut pins = self.pins();
+            pins.retain(|p| p != name);
+            self.write_pins(&pins)?;
             Ok(())
         })
     }
