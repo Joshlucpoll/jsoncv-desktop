@@ -16,7 +16,7 @@ export function Sidebar({ onSettings, ...p }: Props) {
       <header className="sidebar-head" data-tauri-drag-region>
         <span className="wordmark">jsoncv<span>-desktop</span></span>
       </header>
-      <div className="frieze"><Meander periods={9} /></div>
+      <div className="frieze"><Meander periods={7} /></div>
       <CvList {...p} />
       <div className="sidebar-foot">
         <button className="gear" title={`Settings (${MOD},)`} onClick={onSettings}><Icon name="gear" /> Settings</button>

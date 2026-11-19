@@ -1,15 +1,17 @@
 // Roman mosaic accents: "curriculum vitae" is Latin, so the sidebar borrows a meander frieze from opus tessellatum.
 
 // One period of a running meander (Greek key), one tessera per cell; '#' is the key, '.' the ground.
+// The line spirals out of one key, runs along the bottom and spirals into the next, with no separate base rail.
 const KEY = [
-  '#######.',
-  '#.....#.',
-  '#.###.#.',
-  '#.#.#.#.',
-  '#.#...#.',
-  '#.#####.',
-  '#.......',
-  '########',
+  '#########.',
+  '#.......#.',
+  '#.#####.#.',
+  '#.#...#.#.',
+  '#.#.#.#.#.',
+  '#.#.#...#.',
+  '#.#.#####.',
+  '#.#.......',
+  '#.########',
 ]
 const C = 3 // tessera pitch in px
 const GROUT = 0.6
