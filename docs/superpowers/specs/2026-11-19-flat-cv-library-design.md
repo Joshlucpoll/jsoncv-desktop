@@ -88,7 +88,8 @@ its own history. It is a no-op once no `tailored/` rows remain.
 ### Core library (`crates/core`)
 
 - `cv_names` / `cv_path` find CVs by slug across `cvs/` and its subfolders.
-- `CvInfo`: remove `tailored_from`; add `folder: Option<String>` and `pinned: bool`.
+- `CvInfo`: remove `tailored_from`; add `folder: Option<String>` and `pin: Option<usize>` (index in
+  the pins file, so the sidebar can show pin order).
 - `create_tailored` → `duplicate_cv(slug, from)`: copies into the same folder as `from`, no `tailoredFrom`.
 - New `create_cv(slug, folder)`: a blank CV, `{}` (the schema requires no fields). Not the sample,
   which is a fake person.
