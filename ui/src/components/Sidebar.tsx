@@ -5,7 +5,7 @@ import { Meander } from './Mosaic.tsx'
 import { MOD } from '../lib/platform.ts'
 
 type Props = {
-  cvs: CvInfo[]; selected: string; onSelect: (n: string) => void; onChanged: () => Promise<unknown>; onLeaveSelected: () => Promise<boolean>; onError: (e: unknown) => void
+  cvs: CvInfo[]; folders: string[]; loaded: boolean; selected: string; onSelect: (n: string) => void; onChanged: () => Promise<unknown>; onLeaveSelected: () => Promise<boolean>; onError: (e: unknown) => void
   onSettings: () => void; newSignal: number
 }
 

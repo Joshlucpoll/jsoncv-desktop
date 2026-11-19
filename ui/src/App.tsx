@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ask, open } from '@tauri-apps/plugin-dialog'
-import { DEFAULT_THEME, MOCK, type ApiError, type CvInfo, type ExportFormat, type LibraryConfig, type MenuCommand, type ThemeInfo, type Version, binaryPath, errorMessage, exitApp, exportCv, getConfig, history, listCvs, listThemes, onCloseRequested, onLibraryChanged, onMenuCommand, onQuitRequested, printCv, restore, reveal, setCvTheme, setLibrary, setPageMode } from './api.ts'
+import { DEFAULT_THEME, MOCK, type ApiError, type CvInfo, type ExportFormat, type LibraryConfig, type MenuCommand, type ThemeInfo, type Version, binaryPath, errorMessage, exitApp, exportCv, getConfig, history, listCvs, listFolders, listThemes, onCloseRequested, onLibraryChanged, onMenuCommand, onQuitRequested, printCv, restore, reveal, setCvTheme, setLibrary, setPageMode } from './api.ts'
 import { MOD, revealLabel } from './lib/platform.ts'
 import { Settings, type SettingsSection } from './components/Settings.tsx'
 import { Sidebar } from './components/Sidebar.tsx'
@@ -11,14 +11,17 @@ import { DiffView } from './components/DiffView.tsx'
 import { Toasts } from './components/Toasts.tsx'
 import { useToasts } from './lib/toasts.ts'
 import { type Cursor, step } from './lib/undo.ts'
+import { pickDefault } from './lib/sidebar.ts'
 
 /** Waits for the core's sweep (2 s after an outside edit) to commit it, so that commit can be announced too. */
 const SWEEP_WAIT_MS = 2500
 
 export default function App() {
   const [cvs, setCvs] = useState<CvInfo[]>([])
+  const [folders, setFolders] = useState<string[]>([])
+  const [loaded, setLoaded] = useState(false)
   const [themes, setThemes] = useState<ThemeInfo[]>([])
-  const [selected, setSelected] = useState('main')
+  const [selected, setSelected] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [editing, setEditing] = useState(false)
   const leaveRef = useRef<(() => Promise<boolean>) | null>(null)
@@ -43,10 +46,10 @@ export default function App() {
   const { push, dismiss } = toasts
 
   const fail = useCallback((e: unknown) => void push({ key: 'error', kind: 'error', text: errorMessage(e) }), [push])
-  const reloadCvs = useCallback(() => listCvs().then(setCvs, fail), [fail])
+  const reloadCvs = useCallback(() => Promise.all([listCvs(), listFolders()]).then(([c, f]) => { setCvs(c); setFolders(f); setLoaded(true) }, fail), [fail])
   const reloadThemes = useCallback(() => listThemes().then(setThemes, fail), [fail])
 
-  const selectedRef = useRef('main')
+  const selectedRef = useRef('')
   // Newest commit seen per CV; a newer one by someone other than "You" gets a toast.
   const seen = useRef(new Map<string, string>())
 
@@ -88,11 +91,13 @@ export default function App() {
       const themesChanged = paths.some((p) => p.startsWith('themes/'))
       if (themesChanged) reloadThemes()
       const cv = selectedRef.current
-      if (paths.includes(`${cv}.cv.json`)) {
+      // A CV's file can sit in any folder; its name is the file name.
+      const cvChanged = !!cv && paths.some((p) => p.endsWith(`/${cv}.cv.json`))
+      if (cvChanged) {
         void announce(cv)
         setTimeout(() => void announce(cv), SWEEP_WAIT_MS)
       }
-      if (themesChanged || paths.includes(`${cv}.cv.json`)) setReloadKey((k) => k + 1)
+      if (themesChanged || cvChanged) setReloadKey((k) => k + 1)
     })
     return () => void un.then((f) => f())
   }, [reloadCvs, reloadThemes, fail, announce])
@@ -115,12 +120,13 @@ export default function App() {
     return true
   }, [closeEditor])
 
-  // A CV removed outside the app falls back to main.
-  const current = cvs.length && !cvs.some((c) => c.name === selected) ? 'main' : selected
+  // No selection yet, or the selected CV is gone: open the most recently edited one ('' when there are none).
+  const current = cvs.some((c) => c.name === selected) ? selected : (pickDefault(cvs) ?? '')
   const cv = cvs.find((c) => c.name === current)
   // The watcher callback must see the latest selection without re-subscribing.
   useEffect(() => {
     selectedRef.current = current
+    if (!current) return
     // Remember where this CV's history stands, so only later changes are announced.
     history(current, 1).then((v) => { if (v[0] && !seen.current.has(current)) seen.current.set(current, v[0].commit) }, () => {})
   }, [current])
@@ -175,12 +181,13 @@ export default function App() {
     const now = Date.now()
     if (lastCmd.current.cmd === cmd && now - lastCmd.current.at < 300) return
     lastCmd.current = { cmd, at: now }
+    if (!current && cmd !== 'settings') return
     if (cmd === 'edit') void guarded(() => (editing ? closeEditor() : setEditing(true)))
     else if (cmd === 'export-pdf') { if (!exporting) void doExport('pdf') }
     else if (cmd === 'print') doPrint()
     else if (cmd === 'new-cv') setNewSignal((n) => n + 1)
     else setSettingsOpen('library')
-  }, [guarded, editing, closeEditor, exporting, doExport, doPrint])
+  }, [guarded, editing, closeEditor, exporting, doExport, doPrint, current])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return
@@ -189,7 +196,7 @@ export default function App() {
       const t = e.target as HTMLElement | null
       if (k === 'z' && !t?.closest('input, textarea, select, [contenteditable="true"], .cm-editor')) {
         e.preventDefault()
-        void undoRedo(e.shiftKey ? 'redo' : 'undo')
+        if (current) void undoRedo(e.shiftKey ? 'redo' : 'undo')
         return
       }
       const cmd: MenuCommand | undefined =
@@ -201,7 +208,7 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     const un = onMenuCommand(runCmd)
     return () => { window.removeEventListener('keydown', onKey); void un.then((f) => f()) }
-  }, [runCmd, undoRedo])
+  }, [runCmd, undoRedo, current])
 
   const changeLibrary = () =>
     void guarded(async () => {
@@ -209,7 +216,7 @@ export default function App() {
         const p = await open({ directory: true })
         if (typeof p !== 'string') return
         setConfig(await setLibrary(p))
-        closeEditor(); setSelected('main'); dismiss('error')
+        closeEditor(); setSelected(''); dismiss('error')
         seen.current.clear(); cursors.current.clear()
         void reloadCvs(); void reloadThemes(); setReloadKey((k) => k + 1)
       } catch (e) {
@@ -243,9 +250,9 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => { dismiss('export'); dismiss('change'); dismiss('undo'); setFocus(undefined); setSelected(n) }))} onChanged={reloadCvs} onLeaveSelected={leaveSelected} onError={fail} onSettings={() => setSettingsOpen('library')} newSignal={newSignal} />
+      <Sidebar cvs={cvs} selected={current} onSelect={(n) => (n === current ? undefined : void guarded(() => { dismiss('export'); dismiss('change'); dismiss('undo'); setFocus(undefined); setSelected(n) }))} folders={folders} loaded={loaded} onChanged={reloadCvs} onLeaveSelected={leaveSelected} onError={fail} onSettings={() => setSettingsOpen('library')} newSignal={newSignal} />
       <main className="main">
-        <Toolbar
+        {current ? <Toolbar
           name={current}
           theme={cv?.theme ?? null}
           themes={themes}
@@ -260,7 +267,7 @@ export default function App() {
           onJson={toggleJson}
           continuous={continuous}
           onPageMode={(c) => setPageMode(current, c).then(reloadCvs, fail)}
-        />
+        /> : <header className="toolbar" data-tauri-drag-region />}
         {config?.fallbackFrom && !fallbackDismissed && (
           <div className="banner" role="alert">
             <span>Couldn't open {config.fallbackFrom.path}: {config.fallbackFrom.message}. Using {config.library} instead.</span>
@@ -269,8 +276,8 @@ export default function App() {
           </div>
         )}
         <div className="workspace">
-          <Preview cv={current} reloadKey={reloadKey} size={pageSize} continuous={continuous} onPick={onPick} highlight={editing ? highlight : undefined} />
-          {editing && (
+          {current && <Preview cv={current} reloadKey={reloadKey} size={pageSize} continuous={continuous} onPick={onPick} highlight={editing ? highlight : undefined} />}
+          {editing && current && (
             <EditPanel
               key={current} name={current} leaveRef={leaveRef} saveRef={saveRef} onClose={() => void guarded(closeEditor)}
               initialTab={editTab} tabRequest={tabRequest} onTab={onTab} reveal={reveal_} onFocusPath={onFocusPath}

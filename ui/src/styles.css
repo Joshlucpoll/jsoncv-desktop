@@ -106,8 +106,12 @@ button, select, input { font: inherit; color: inherit; }
 }
 .item:hover { background: var(--hover); }
 .item.on { background: var(--accent-bg); }
-.item.nested, .slug-form.nested { padding-left: 24px; }
-.item.nested::before { content: "↳"; color: var(--muted); margin-left: -14px; width: 14px; }
+.item.nested, .slug-form.nested { padding-left: 28px; }
+.item.folder { color: var(--muted); }
+.item.folder:hover { color: var(--text); }
+.chevron { display: inline-flex; transition: transform 120ms; }
+.chevron.open { transform: rotate(90deg); }
+.empty-note { margin: 6px 8px; color: var(--muted); font-style: italic; }
 .item .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item.add { color: var(--muted); margin-top: 2px; }
 .item.add:hover { color: var(--text); }
@@ -126,6 +130,10 @@ button, select, input { font: inherit; color: inherit; }
 .menu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 4px 10px; border-radius: 5px; }
 .menu button:hover { background: var(--accent-fill); color: #fff; }
 .menu .danger { color: var(--danger); }
+.menu button:disabled { opacity: 0.45; }
+.menu button:disabled:hover { background: none; color: var(--danger); }
+.menu .menu-label { padding: 6px 10px 2px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; border-top: 1px solid var(--line); margin-top: 4px; }
+.menu .indent { padding-left: 18px; }
 .menu .danger:hover { color: #fff; background: var(--danger); }
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }

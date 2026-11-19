@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_THEME, type ExportFormat, type ThemeInfo, type ThemeReport, previewHtml, themeReport } from '../api.ts'
-import { cvTitle } from '../lib/names.ts'
 import { MOD } from '../lib/platform.ts'
 import { withHead } from '../lib/preview.ts'
 import { Icon } from './Icon.tsx'
@@ -136,7 +135,7 @@ function ThemePicker({ cv, value, themes, onPick, onManage }: { cv: string; valu
 export function Toolbar({ name, theme, themes, onTheme, onManageThemes, editing, exporting, onEdit, onExport, onPrint, json, onJson, continuous, onPageMode }: Props) {
   return (
     <header className="toolbar" data-tauri-drag-region>
-      <h1 data-tauri-drag-region>{cvTitle(name)}</h1>
+      <h1 data-tauri-drag-region>{name}</h1>
       <span className="spacer" data-tauri-drag-region />
       {/* Least to most important, left to right: the primary action sits at the edge. */}
       <OptionsMenu json={json} onJson={onJson} continuous={continuous} onPageMode={onPageMode} />

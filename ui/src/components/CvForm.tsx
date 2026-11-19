@@ -317,7 +317,7 @@ export function CvForm({ schema, draft, errors, fresh, onChange, section, onSect
       'ui:description': '',
       'ui:submitButtonOptions': { norender: true }, // edits save as you type
       $schema: { 'ui:widget': 'hidden' },
-      meta: { 'ui:widget': 'hidden' }, // tool settings (theme, page setup, tailoredFrom); the JSON editor still shows them
+      meta: { 'ui:widget': 'hidden' }, // tool settings (theme, page setup); the JSON editor still shows them
       basics: { ...ui.basics, image: { ...ui.basics?.image, 'ui:widget': 'imageFile' } },
     }
   }, [schema])

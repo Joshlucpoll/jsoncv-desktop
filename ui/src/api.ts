@@ -2,7 +2,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { type CloseRequestedEvent, getCurrentWindow } from '@tauri-apps/api/window'
 
-export type CvInfo = { name: string; theme: string | null; tailored_from: string | null; continuous: boolean; modified_ms: number; error: string | null }
+/** A CV's name is its slug, wherever its file sits; `folder` is its subfolder of `cvs/`, `pin` its place among pinned CVs. */
+export type CvInfo = { name: string; folder: string | null; pin: number | null; theme: string | null; continuous: boolean; modified_ms: number; error: string | null }
 export type CvDoc = { name: string; cv: unknown; base: string }
 export type Saved = { commit: string; base: string }
 export type Version = { commit: string; author: string; message: string; time_ms: number }
@@ -24,7 +25,14 @@ export const errorMessage = (e: unknown): string =>
 export const listCvs = () => invoke<CvInfo[]>('list_cvs')
 export const readCv = (name: string) => invoke<CvDoc>('read_cv', { name })
 export const saveDraft = (name: string, baseCv: unknown, draft: unknown) => invoke<Saved>('save_draft', { name, baseCv, draft })
-export const createTailored = (slug: string, from: string) => invoke<CvInfo>('create_tailored', { slug, from })
+export const duplicateCv = (slug: string, from: string) => invoke<CvInfo>('duplicate_cv', { slug, from })
+export const createCv = (slug: string, folder: string | null) => invoke<CvInfo>('create_cv', { slug, folder })
+export const moveCv = (name: string, folder: string | null) => invoke<CvInfo>('move_cv', { name, folder })
+export const listFolders = () => invoke<string[]>('list_folders')
+export const createFolder = (name: string) => invoke<void>('create_folder', { name })
+export const renameFolder = (name: string, newName: string) => invoke<void>('rename_folder', { name, newName })
+export const deleteFolder = (name: string) => invoke<void>('delete_folder', { name })
+export const setPinned = (name: string, pinned: boolean) => invoke<void>('set_pinned', { name, pinned })
 export const renameCv = (name: string, newSlug: string) => invoke<CvInfo>('rename_cv', { name, newSlug })
 export const deleteCv = (name: string) => invoke<void>('delete_cv', { name })
 export const history = (name: string, limit: number) => invoke<Version[]>('history', { name, limit })
