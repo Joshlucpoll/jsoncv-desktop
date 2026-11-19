@@ -115,8 +115,11 @@ button, select, input { font: inherit; color: inherit; }
 .item .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item.add { color: var(--muted); margin-top: 2px; }
 .item.add:hover { color: var(--text); }
-.add-row { display: flex; gap: 2px; }
-.add-row .item { width: auto; flex: 1; white-space: nowrap; }
+.add-row { display: flex; gap: 2px; align-items: center; margin-top: 2px; }
+.add-row .item.add { margin-top: 0; }
+/* Secondary to New CV: a small square icon button, dimmer until hovered. */
+.add-folder { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 6px; background: none; color: var(--muted); opacity: 0.6; }
+.add-folder:hover, .add-folder:focus-visible { opacity: 1; color: var(--text); background: var(--hover); }
 .badge { font-size: 11px; color: var(--warn); background: var(--warn-bg); border-radius: 4px; padding: 0 4px; }
 .slug-form { padding-right: 4px; margin: 2px 0; }
 .slug-form input {

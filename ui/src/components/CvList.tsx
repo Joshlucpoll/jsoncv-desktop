@@ -272,8 +272,8 @@ export function CvList({ cvs, folders, loaded, selected, onSelect, onChanged, on
           <button className="item add" title={`New blank CV (duplicate the open CV with ${MOD}N)`} onClick={() => setCreating({ kind: 'blank' })}>
             <Icon name="plus" size={12} /> New CV…
           </button>
-          <button className="item add" title="New folder" onClick={() => setCreating({ kind: 'folder' })}>
-            <Icon name="folder" size={12} /> New folder…
+          <button className="add-folder" title="New folder" aria-label="New folder" onClick={() => setCreating({ kind: 'folder' })}>
+            <Icon name="folder" size={13} />
           </button>
         </div>
       )}
