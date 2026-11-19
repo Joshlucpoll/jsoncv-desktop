@@ -73,6 +73,7 @@ impl Library {
             db: db.to_path_buf(),
             id,
         };
+        crate::migrate::migrate(&lib)?;
         // Only a brand-new library gets the sample; an emptied one stays empty.
         if fresh && lib.cv_entries()?.is_empty() {
             std::fs::write(lib.cvs_dir().join("my-cv.cv.json"), SAMPLE)?;

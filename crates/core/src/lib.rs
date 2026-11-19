@@ -5,6 +5,7 @@ pub mod error;
 pub mod export;
 pub mod history;
 pub mod library;
+mod migrate;
 pub mod render;
 pub mod schema;
 
