@@ -1,15 +1,22 @@
+/* Bundled (SIL OFL, licences in assets/fonts/), so they work offline. Marcellus: Trajan-style inscription capitals for
+   headings. Source Serif 4: a serif with an optical-size axis, so it stays legible at 11-13px UI sizes. */
+@font-face { font-family: Marcellus; src: url(./assets/fonts/marcellus-latin-400-normal.woff2) format("woff2"); font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url(./assets/fonts/source-serif-4-latin-opsz-normal.woff2) format("woff2"); font-weight: 200 900; font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url(./assets/fonts/source-serif-4-latin-opsz-italic.woff2) format("woff2"); font-weight: 200 900; font-style: italic; font-display: swap; }
 :root {
   color-scheme: light dark;
+  --display: Marcellus, "Trajan Pro", Georgia, serif;
   --bg: #fff;
   --side: rgba(238, 238, 241, 0.92);
   --bar: #f6f6f8;
-  --canvas: #e4e4e8;
+  --canvas: #e7e0d2; /* travertine */
   --text: #1d1d1f;
   --muted: #6a6a6f; /* 4.6:1 on --side */
   --line: rgba(0, 0, 0, 0.1);
   --hover: rgba(0, 0, 0, 0.05);
-  --accent: #0a64ff;
-  --accent-bg: rgba(10, 100, 255, 0.14);
+  --accent: #9e3a26; /* Pompeian red: 6.8:1 with white, 5.2:1 on --accent-bg over --bar */
+  --accent-fill: var(--accent); /* behind white text */
+  --accent-bg: rgba(158, 58, 38, 0.13);
   --ctl: #fff;
   --warn: #b25e00;
   --warn-bg: rgba(255, 159, 10, 0.18);
@@ -23,19 +30,24 @@
   --tess-dark: #5e2814;
   --panel: rgba(250, 250, 251, 0.94);
   --seg: #e2e2e6;
+  --stone: #c9b99a; /* tabula ansata frame */
+  --stone-field: #f4efe4;
+  --wax: #2a211a; /* wax tablet, both modes */
+  --wood: #8a5a34;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #1e1e1e;
     --side: rgba(40, 40, 43, 0.94);
     --bar: #2a2a2c;
-    --canvas: #161617;
+    --canvas: #1b1814;
     --text: #f2f2f4;
     --muted: #98989f;
     --line: rgba(255, 255, 255, 0.1);
     --hover: rgba(255, 255, 255, 0.07);
-    --accent: #4d8dff;
-    --accent-bg: rgba(77, 141, 255, 0.24);
+    --accent: #f0957c; /* 4.7:1 on --accent-bg over --bar */
+    --accent-bg: rgba(240, 149, 124, 0.16);
+    --accent-fill: #b5462e; /* 5.4:1 with white; the text accent is too light to carry white text */
     --ctl: #3a3a3d;
     --warn: #ffb340;
     --warn-bg: rgba(255, 159, 10, 0.22);
@@ -48,12 +60,15 @@
     --tess-dark: #8a3c22;
     --panel: rgba(34, 34, 37, 0.94);
     --seg: #3a3a3e;
+    --stone: #5a4d3b;
+    --stone-field: #2c2822;
+    --wood: #6b4527;
   }
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
-  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 13.5px/1.4 "Source Serif 4", Georgia, serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -84,7 +99,7 @@ button, select, input { font: inherit; color: inherit; }
 .tess-ground.v1 { fill: color-mix(in oklab, var(--tess-ground) 70%, rgba(168, 80, 47, 0.2)); }
 /* Lists sit on near-solid panels so they read clearly; the mosaic shows in the gaps between them. */
 .sidebar > section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px; margin-bottom: 8px; }
-.sidebar h2 { margin: 6px 8px 4px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.sidebar h2 { margin: 6px 8px 4px; font: 12px var(--display); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
 .item {
   display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
   border: 0; background: none; border-radius: 6px; padding: 4px 8px; cursor: default;
@@ -109,7 +124,7 @@ button, select, input { font: inherit; color: inherit; }
   background: var(--ctl); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow);
 }
 .menu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 4px 10px; border-radius: 5px; }
-.menu button:hover { background: var(--accent); color: #fff; }
+.menu button:hover { background: var(--accent-fill); color: #fff; }
 .menu .danger { color: var(--danger); }
 .menu .danger:hover { color: #fff; background: var(--danger); }
 
@@ -118,7 +133,7 @@ button, select, input { font: inherit; color: inherit; }
   display: flex; align-items: center; gap: 8px; height: 44px; flex: none; padding: 0 14px;
   background: var(--bar); border-bottom: 1px solid var(--line);
 }
-.toolbar h1 { margin: 0; font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toolbar h1 { margin: 0; font: 14px/24px var(--display); letter-spacing: 0.03em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toolbar > * { flex: none; }
 .toolbar > h1, .toolbar > .spacer { flex: 0 1 auto; }
 .toolbar > .spacer { flex-grow: 1; }
@@ -145,7 +160,7 @@ button, select, input { font: inherit; color: inherit; }
 .preview.grabbing { cursor: grabbing; }
 .paper { transform-origin: 0 0; background: #fff; box-shadow: var(--shadow); border-radius: 2px; position: relative; }
 .page-break { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed rgba(0, 0, 0, 0.3); pointer-events: auto; }
-.page-break span { position: absolute; right: 6px; top: 2px; font: 600 10px/1.4 -apple-system, sans-serif; color: rgba(0, 0, 0, 0.45); background: #fff; padding: 0 4px; border-radius: 3px; }
+.page-break span { position: absolute; right: 6px; top: 2px; font: 10px/1.4 var(--display); letter-spacing: 0.06em; color: rgba(0, 0, 0, 0.45); background: #fff; padding: 0 4px; border-radius: 3px; }
 .preview-bar {
   position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; white-space: nowrap;
   padding: 3px 6px; background: var(--ctl); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow); font-size: 12px;
@@ -167,8 +182,8 @@ button, select, input { font: inherit; color: inherit; }
 .toolbar button.with-icon { display: inline-flex; align-items: center; gap: 5px; }
 .toolbar button.icon-only { width: 26px; padding: 0; justify-content: center; }
 .toolbar .theme-trigger > .icon:first-child, .toolbar .with-icon:not(.on) > .icon { color: var(--muted); }
-.toolbar button.primary { background: var(--accent); border-color: transparent; color: #fff; font-weight: 500; }
-.toolbar button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.toolbar button.primary { background: var(--accent-fill); border-color: transparent; color: #fff; font-weight: 500; }
+.toolbar button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-fill) 88%, #000); }
 .tb-sep { width: 1px; height: 16px; background: var(--line); margin: 0 2px; }
 .edit {
   flex: 0 1 auto; min-width: 320px; display: flex; flex-direction: column; min-height: 0;
@@ -220,8 +235,12 @@ button.status.error { cursor: pointer; }
 .image-widget .row { display: flex; gap: 6px; }
 .image-widget .row input { flex: 1; min-width: 0; }
 .image-widget .row button { flex: none; }
-.edit .cm-editor { font-size: 12px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.edit .cm-editor.cm-focused { outline: none; border-color: var(--accent); }
+/* Wax tablet (tabula cerata): dark wax in a wooden frame, in light and dark mode alike. */
+.edit .cm-editor { font-size: 12px; border: 5px solid var(--wood); border-radius: 4px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.2); }
+.edit .cm-editor, .edit .cm-editor .cm-gutters { background: var(--wax) !important; color: #eadfc8; }
+.edit .cm-editor .cm-gutters { border-right: 1px solid rgba(234, 223, 200, 0.12); color: rgba(234, 223, 200, 0.4); }
+.edit .cm-editor .cm-activeLine, .edit .cm-editor .cm-activeLineGutter { background: rgba(234, 223, 200, 0.06) !important; }
+.edit .cm-editor.cm-focused { outline: none; border-color: color-mix(in srgb, var(--wood) 70%, var(--accent)); }
 
 .overlay { position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, 0.35); display: flex; align-items: center; justify-content: center; }
 .dialog { background: var(--bg); border-radius: 10px; box-shadow: var(--shadow); width: min(720px, 90vw); max-height: 80vh; display: flex; flex-direction: column; }
@@ -315,7 +334,7 @@ button.status.error { cursor: pointer; }
 .scrim { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.35); }
 .dialog { width: 520px; max-width: calc(100vw - 32px); max-height: calc(100vh - 48px); overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 14px 16px 16px; user-select: text; }
 .dialog header { display: flex; align-items: center; margin-bottom: 4px; }
-.dialog h3 { margin: 14px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.dialog h3 { margin: 14px 0 6px; font: 12px var(--display); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .lib-row { display: flex; align-items: center; gap: 8px; }
 .lib-row code { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; background: var(--hover); border-radius: 6px; }
 .banner-inline { margin: 8px 0 0; padding: 6px 10px; border-radius: 6px; background: var(--warn-bg); color: var(--warn); }
@@ -323,7 +342,7 @@ button.status.error { cursor: pointer; }
 .snippet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; color: var(--muted); font-size: 12px; }
 .snippet pre { margin: 0; padding: 8px 10px; background: var(--hover); border-radius: 6px; overflow-x: auto; font: 12px/1.4 ui-monospace, Menlo, monospace; }
 .toolbar .menu button { height: auto; padding: 4px 10px; border: 0; box-shadow: none; background: none; }
-.toolbar .menu button:hover, .toolbar .menu button:focus-visible { background: var(--accent); color: #fff; outline: none; }
+.toolbar .menu button:hover, .toolbar .menu button:focus-visible { background: var(--accent-fill); color: #fff; outline: none; }
 .snippet pre { white-space: pre-wrap; word-break: break-all; }
 
 [hidden] { display: none !important; }
@@ -372,8 +391,37 @@ button.status.error { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .section-tabs { transition: none; } }
 
 .pane-head { display: flex; align-items: center; gap: 8px; height: 32px; margin: 0 0 8px; }
-.pane-head h2 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+.pane-head h2 { margin: 0; font: 17px var(--display); letter-spacing: 0.02em; }
+.pane-head .ordinal { font: 13px var(--display); letter-spacing: 0.06em; color: var(--tess-key); margin-right: -2px; }
+.pane-head .ordinal::after { content: " ·"; }
 .empty { margin: 0 0 8px; padding: 14px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); text-align: center; font-size: 12px; }
+.empty .latin { display: block; margin-bottom: 4px; font: 13px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text); }
+
+/* Tabula ansata: an inscription plaque with dovetail handles. The stone shows as the frame and the
+   handles; ::before lays the lighter field inside. */
+.tabula {
+  --ear: 12px; position: relative; isolation: isolate; border: 0; border-radius: 0; background: var(--stone);
+  /* Each handle is a dovetail: 12px tall where it meets the plaque, 24px at its outer edge, centred. */
+  clip-path: polygon(var(--ear) 0, calc(100% - var(--ear)) 0, calc(100% - var(--ear)) calc(50% - 6px), 100% calc(50% - 12px), 100% calc(50% + 12px), calc(100% - var(--ear)) calc(50% + 6px), calc(100% - var(--ear)) 100%, var(--ear) 100%, var(--ear) calc(50% + 6px), 0 calc(50% + 12px), 0 calc(50% - 12px), var(--ear) calc(50% - 6px));
+}
+.tabula::before { content: ""; position: absolute; z-index: -1; inset: 2px calc(var(--ear) + 2px); background: var(--stone-field); }
+.empty.tabula { padding: 14px calc(var(--ear) + 16px); }
+
+/* Hedera (ivy leaf): the end mark Roman inscriptions closed on. */
+/* Drawn as a mask, not the U+2766 glyph, which some fonts render as a colour emoji. */
+.pane::after {
+  content: ""; display: block; width: 18px; height: 18px; margin: 18px auto 0; background: var(--tess-key); opacity: 0.6;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 22C6 18 2.5 14 2.5 10.2A4.7 4.7 0 0 1 12 8.6a4.7 4.7 0 0 1 9.5 1.6C21.5 14 18 18 12 22z'/%3E%3Cpath d='M12 9.5C11.6 6 9.8 3.4 6.5 2' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* Laurel on "Saved"; wax seal on export. */
+.edit .status { display: inline-flex; align-items: center; gap: 3px; }
+.status.ok .icon { color: #8a8a3a; }
+.seal {
+  flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%;
+  background: radial-gradient(circle at 38% 35%, #c4473a, #8e1f1a 70%); box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.3);
+  font: 9px/1 var(--display); letter-spacing: 0.04em; color: #f3c9b8; text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.35);
+}
 
 /* Fields: two to a row when the panel is wide enough; long text, lists and groups take a full row. */
 .fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px 12px; }
@@ -392,7 +440,7 @@ button.status.error { cursor: pointer; }
 
 .edit .group { border: 0; margin: 2px 0 0; padding: 10px; min-width: 0; border-radius: 8px; background: var(--hover); }
 .group-label { float: none !important; }
-.group > legend, .group-label { float: left; width: 100%; margin: 0 0 8px; padding: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); }
+.group > legend, .group-label { float: left; width: 100%; margin: 0 0 8px; padding: 0; font: 12px var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .group > legend + * { clear: both; }
 .group .card { background: var(--bg); }
 .group.list .add { margin-top: 6px; }
@@ -445,7 +493,7 @@ button.status.error { cursor: pointer; }
 .toolbar .menu button { gap: 8px; }
 .toolbar .options-menu button > .icon { color: var(--muted); }
 .toolbar .options-menu button:hover > .icon, .toolbar .options-menu button:focus-visible > .icon { color: inherit; }
-.menu-heading { padding: 6px 10px 2px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.menu-heading { padding: 6px 10px 2px; font: 12px var(--display); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
 .opt-text { flex: 1; display: flex; flex-direction: column; }
 .opt-note { font-size: 11px; color: var(--muted); }
 .toolbar .menu button:hover .opt-note, .toolbar .menu button:focus-visible .opt-note { color: inherit; opacity: 0.85; }
@@ -453,7 +501,8 @@ button.status.error { cursor: pointer; }
 /* Settings: sections on the left, details on the right */
 .dialog.settings { width: 760px; height: min(560px, calc(100vh - 48px)); padding: 0; display: flex; flex-direction: row; overflow: hidden; }
 .settings-nav { flex: none; width: 184px; padding: 14px 8px; background: var(--bar); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
-.settings-title { font-weight: 650; font-size: 13px; padding: 2px 8px 10px; }
+.settings-title { font: 16px var(--display); letter-spacing: 0.04em; padding: 2px 8px 6px; }
+.settings-nav .frieze { justify-content: flex-start; padding-left: 8px; }
 .dialog .settings-tab { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: 6px; font-size: 13px; color: var(--text); }
 .dialog .settings-tab .icon { color: var(--muted); }
 .dialog .settings-tab:hover { background: var(--hover); }
@@ -461,7 +510,7 @@ button.status.error { cursor: pointer; }
 .dialog .settings-tab.on .icon { color: var(--accent); }
 .settings-body { flex: 1; min-width: 0; overflow-y: auto; padding: 14px 20px 20px; }
 .settings-body > header { display: flex; align-items: center; margin-bottom: 12px; }
-.settings-body h2 { margin: 0; font-size: 15px; font-weight: 650; }
+.settings-body h2 { margin: 0; font: 17px var(--display); letter-spacing: 0.02em; }
 .lead { margin: 0 0 14px; font-size: 12px; }
 .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
 .agent { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
@@ -471,7 +520,7 @@ button.status.error { cursor: pointer; }
 .agent-note { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .agent.err .agent-note { color: var(--danger); }
 .dialog button { display: inline-flex; align-items: center; gap: 5px; }
-.dialog button.primary { background: var(--accent); border-color: transparent; color: #fff; }
+.dialog button.primary { background: var(--accent-fill); border-color: transparent; color: #fff; }
 .dialog button.primary:disabled { opacity: 0.6; }
 .other-agent { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 10px 12px; border-radius: 8px; background: var(--hover); }
 .other-agent .setting-label { flex: 1; margin: 0; }

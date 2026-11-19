@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { type AgentId, type LibraryConfig, type ThemeInfo, connectAgent, errorMessage, reveal } from '../api.ts'
 import { MOD, revealLabel } from '../lib/platform.ts'
+import { Meander } from './Mosaic.tsx'
 import { Icon, type IconName } from './Icon.tsx'
 import { ThemeRow } from './ThemesView.tsx'
 
@@ -113,6 +114,7 @@ export function Settings({ config, binary, themes, reloadKey, section: initial =
       <div className="dialog settings" role="dialog" aria-modal="true" aria-label="Settings">
         <nav className="settings-nav" aria-label="Settings sections">
           <div className="settings-title">Settings</div>
+          <div className="frieze"><Meander periods={5} /></div>
           {SECTIONS.map((s) => (
             <button key={s.id} className={`settings-tab${s.id === section ? ' on' : ''}`} aria-current={s.id === section ? 'page' : undefined} onClick={() => setSection(s.id)}>
               <Icon name={s.icon} /> {s.label}

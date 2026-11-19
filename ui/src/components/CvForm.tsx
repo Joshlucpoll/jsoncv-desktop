@@ -6,6 +6,7 @@ import type { ArrayFieldItemButtonsTemplateProps, ArrayFieldItemTemplateProps, A
 import { open } from '@tauri-apps/plugin-dialog'
 import { addAssetFromPath, errorMessage } from '../api.ts'
 import { SINGULAR, buildUiSchema, errorsUnder, humanize, isWide, itemSummary, pointer, splitTags } from '../lib/form.ts'
+import { roman } from '../lib/roman.ts'
 import { Icon, type IconName } from './Icon.tsx'
 
 /** A field to show: set when the user clicks the preview; `n` makes a repeat click count again. */
@@ -89,6 +90,7 @@ function Root({ properties, formData }: ObjectFieldTemplateProps) {
             // Every section stays mounted, so open cards and scroll state survive switching tabs.
             <section key={p.name} className="pane" data-path={`/${p.name}`} hidden={p.name !== active} role="tabpanel" aria-label={t.label}>
               <header className="pane-head">
+                <span className="ordinal" aria-hidden="true">{roman(tabs.indexOf(t) + 1)}</span>
                 <h2>{t.label}</h2>
                 {t.count !== undefined && <span className="count">{t.count}</span>}
                 {t.errors > 0 && <span className="err-count">{errLabel(t.errors)}</span>}
@@ -135,7 +137,7 @@ function ArrayFieldTemplate({ fieldPathId, title: rawTitle, items, canAdd, onAdd
   if (path.length === 1) {
     return (
       <>
-        {count === 0 && <p className="empty">Nothing here yet. Sections without entries are left out of the CV.</p>}
+        {count === 0 && <p className="empty tabula"><span className="latin" lang="la">Nihil adhuc</span>Nothing here yet. Sections without entries are left out of the CV.</p>}
         <div className="cards">{items}</div>
         {add}
       </>

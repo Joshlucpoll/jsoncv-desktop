@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import validator from '@rjsf/validator-ajv8'
 import type { RJSFSchema } from '@rjsf/utils'
 import CodeMirror from '@uiw/react-codemirror'
@@ -39,9 +39,6 @@ const readWidth = () => {
 // 600 = the 240px sidebar + the preview's 360px minimum (styles.css).
 const clampWidth = (w: number) => Math.round(Math.max(320, Math.min(w, window.innerWidth * 0.6, window.innerWidth - 600)))
 
-const darkQuery = matchMedia('(prefers-color-scheme: dark)')
-const useDark = () => useSyncExternalStore((cb) => { darkQuery.addEventListener('change', cb); return () => darkQuery.removeEventListener('change', cb) }, () => darkQuery.matches)
-
 export type EditTab = 'form' | 'json'
 
 type Props = {
@@ -81,7 +78,6 @@ export function EditPanel({ name, onClose, initialTab, tabRequest, onTab, reveal
   const [pending, setPending] = useState(false)
   const [undo, setUndo] = useState<{ prev: unknown }>() // offered after a list item is removed
   const [width, setWidth] = useState(() => clampWidth(readWidth()))
-  const dark = useDark()
   const fresh = useRef(false) // false while the form's first render runs, so existing cards start closed
 
   const baseRef = useRef<unknown>(undefined)
@@ -400,7 +396,7 @@ export function EditPanel({ name, onClose, initialTab, tabRequest, onTab, reveal
         <strong>{tab === 'json' ? 'Edit JSON' : 'Edit'}</strong>
         {status && (status.onClick
           ? <button className={`status ${status.kind}`} onClick={status.onClick} title="Show the first error">{status.text}</button>
-          : <span className={`status ${status.kind}`} role="status">{status.text}</span>)}
+          : <span className={`status ${status.kind}`} role="status">{status.kind === 'ok' && <Icon name="laurel" size={13} />}{status.text}</span>)}
         <span className="spacer" />
         {tab === 'json' && <button className="link subtle" onClick={() => switchTab('form')}>Back to form</button>}
         <button className="icon-btn" onClick={onClose} aria-label="Close edit panel" title="Close"><Icon name="x" /></button>
@@ -423,7 +419,7 @@ export function EditPanel({ name, onClose, initialTab, tabRequest, onTab, reveal
       <div className={`edit-body${tab === 'json' ? ' json' : ''}`} ref={body} onFocus={onFocusIn}>
         {tab === 'form' ? form : (
           <>
-            <CodeMirror value={jsonText} extensions={[json()]} theme={dark ? 'dark' : 'light'} onChange={onJson} basicSetup={{ foldGutter: false }} />
+            <CodeMirror value={jsonText} extensions={[json()]} theme="dark" /* the wax tablet is dark in both modes (styles.css) */ onChange={onJson} basicSetup={{ foldGutter: false }} />
             {jsonError && <div className="field-error">{jsonError}</div>}
           </>
         )}

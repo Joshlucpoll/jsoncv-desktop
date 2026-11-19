@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 
 export type ToastAction = { label: string; run: () => void }
 /** `key` replaces an earlier toast with the same key; `timeout` (ms) auto-dismisses it. */
-export type ToastInput = { key?: string; kind?: 'ok' | 'warn' | 'error'; text: string; actions?: ToastAction[]; timeout?: number }
+export type ToastInput = { key?: string; kind?: 'ok' | 'warn' | 'error'; text: string; actions?: ToastAction[]; timeout?: number; seal?: boolean }
 export type Toast = ToastInput & { id: number }
 
 let seq = 0

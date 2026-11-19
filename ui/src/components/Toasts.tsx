@@ -12,6 +12,7 @@ function Item({ t, dismiss }: { t: Toast; dismiss: (id: number) => void }) {
   return (
     <div className={`toast ${t.kind ?? 'ok'}`} role={t.kind === 'error' ? 'alert' : 'status'} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       {t.kind && t.kind !== 'ok' && <Icon name="warn" />}
+      {t.seal && <span className="seal" aria-hidden="true">CV</span>}
       <span className="toast-text">{t.text}</span>
       {t.actions?.map((a) => (
         <button key={a.label} className="link" onClick={() => { dismiss(t.id); a.run() }}>{a.label}</button>

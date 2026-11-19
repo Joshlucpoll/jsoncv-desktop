@@ -159,7 +159,7 @@ export default function App() {
     setExporting(true)
     try {
       const path = await exportCv(current, f)
-      push({ key: 'export', text: `Exported to ${path}`, timeout: 10_000, actions: [{ label: revealLabel, run: () => void reveal(path).catch(fail) }] })
+      push({ key: 'export', seal: true, text: `Exported to ${path}`, timeout: 10_000, actions: [{ label: revealLabel, run: () => void reveal(path).catch(fail) }] })
     } catch (e) {
       if ((e as ApiError)?.kind === 'Browser') push({ key: 'export', kind: 'warn', text: 'PDF export needs Chrome, Edge or Chromium. None was found.', actions: [{ label: 'Print…', run: doPrint }] })
       else fail(e)

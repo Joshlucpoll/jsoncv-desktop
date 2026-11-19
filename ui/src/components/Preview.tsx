@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { errorMessage, previewHtml, readCv } from '../api.ts'
 import { type Leaf, type Prepared, elementFor, leaves, pathAt, prepare } from '../lib/locate.ts'
 import { pageCount, placePage, withHead } from '../lib/preview.ts'
+import { roman } from '../lib/roman.ts'
 import { Icon } from './Icon.tsx'
 
 export type PageSize = 'A4' | 'Letter'
@@ -211,14 +212,14 @@ export function Preview({ cv, commit, theme, reloadKey, size, continuous, onPick
           />
           {!continuous && Array.from({ length: pages - 1 }, (_, i) => (
             <div key={i} className="page-break" style={{ top: (i + 1) * page.h }} title="Approximate page break; the print margins decide the exact one">
-              <span>Page {i + 2}</span>
+              <span>Pagina {roman(i + 2)}</span>
             </div>
           ))}
         </div>
         </div>
       </div>
       <div className="preview-bar" role="toolbar" aria-label="Preview">
-        <span className="pages" title={continuous ? 'One long page (Options › Page setup)' : `${size} pages`}>{continuous ? 'Continuous' : `${pages} page${pages === 1 ? '' : 's'}`}</span>
+        <span className="pages" title={continuous ? 'One long page (Options › Page setup)' : `${pages} ${size} page${pages === 1 ? '' : 's'}`}>{continuous ? 'Continuous' : `${roman(pages)} ${pages === 1 ? 'pagina' : 'paginae'}`}</span>
         <span className="sep" />
         <button className="icon-btn" aria-label="Zoom out" title="Zoom out (⌘−)" onClick={() => step(-1)}><Icon name="minus" size={12} /></button>
         <button className="zoom-value" title="Actual size (⌘0)" onClick={() => zoomTo(1)}>{Math.round(scale * 100)}%</button>
