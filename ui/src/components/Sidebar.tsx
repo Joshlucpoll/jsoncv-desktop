@@ -3,6 +3,7 @@ import { CvList } from './CvList.tsx'
 import { HistoryList } from './HistoryList.tsx'
 import { ThemeList } from './ThemesView.tsx'
 import { Icon } from './Icon.tsx'
+import { Meander } from './Mosaic.tsx'
 import { MOD } from '../lib/platform.ts'
 
 export type View = 'cvs' | 'themes'
@@ -17,6 +18,9 @@ type Props = {
 export function Sidebar({ reloadKey, viewing, onView, view, onViewMode, themes, theme, onTheme, onSettings, ...p }: Props) {
   return (
     <aside className="sidebar">
+      <header className="sidebar-head">
+        <Meander />
+      </header>
       <div className="seg" role="tablist" aria-label="Sidebar view">
         {(['cvs', 'themes'] as const).map((v) => (
           <button key={v} role="tab" aria-selected={view === v} onClick={() => onViewMode(v)}>{v === 'cvs' ? 'CVs' : 'Themes'}</button>

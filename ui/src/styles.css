@@ -15,6 +15,14 @@
   --warn-bg: rgba(255, 159, 10, 0.18);
   --danger: #d70015;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 8px 24px rgba(0, 0, 0, 0.12);
+  /* Roman mosaic accents */
+  --tess-key: #a8502f;
+  --tess-ground: rgba(184, 137, 58, 0.2);
+  --tess-field: url(./assets/tesserae-light.svg);
+  --tess-light: #e8b062;
+  --tess-dark: #5e2814;
+  --panel: rgba(250, 250, 251, 0.94);
+  --seg: #e2e2e6;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -33,6 +41,13 @@
     --warn-bg: rgba(255, 159, 10, 0.22);
     --danger: #ff6961;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
+    --tess-key: #d98a68;
+    --tess-ground: rgba(227, 194, 122, 0.12);
+    --tess-field: url(./assets/tesserae-dark.svg);
+    --tess-light: #f2cf8a;
+    --tess-dark: #8a3c22;
+    --panel: rgba(34, 34, 37, 0.94);
+    --seg: #3a3a3e;
   }
 }
 * { box-sizing: border-box; }
@@ -50,10 +65,22 @@ button, select, input { font: inherit; color: inherit; }
 
 .sidebar {
   width: 240px; flex: none; display: flex; flex-direction: column;
-  background: var(--side); border-right: 1px solid var(--line);
-  padding: 44px 10px 12px; /* top gap leaves room for macOS window controls if overlaid */
+  background: var(--tess-field) 0 0 / 60px 60px, var(--side); border-right: 1px solid var(--line);
+  background-attachment: local;
+  padding: 0 10px 12px;
   overflow-y: auto;
 }
+/* Meander frieze; 44px tall, the space the window controls would need if overlaid. */
+.sidebar-head { display: flex; align-items: center; justify-content: center; height: 44px; flex: none; }
+.meander { flex: none; display: block; }
+.tess-key { fill: var(--tess-key); }
+.tess-ground { fill: var(--tess-ground); }
+.tess-key.v1 { fill: color-mix(in oklab, var(--tess-key) 78%, var(--tess-light)); }
+.tess-key.v2 { fill: color-mix(in oklab, var(--tess-key) 80%, var(--tess-dark)); }
+.tess-ground.v1 { fill: color-mix(in oklab, var(--tess-ground) 70%, rgba(168, 80, 47, 0.2)); }
+/* Lists sit on near-solid panels so they read clearly; the mosaic shows in the gaps between them. */
+.sidebar > section, .sidebar > .theme-list { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px; margin-bottom: 8px; }
+.sidebar > section.history { margin-top: 0; }
 .sidebar h2 { margin: 6px 8px 4px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .history-slot { flex: 1; }
 .item {
@@ -296,14 +323,14 @@ button.status.error { cursor: pointer; }
 .dialog .tabs button { white-space: nowrap; border: 0; }
 .banner.ok { background: var(--accent-bg); color: var(--text); }
 .banner .link { white-space: nowrap; }
-.seg { display: flex; background: var(--hover); border-radius: 6px; padding: 2px; margin: 0 0 8px; }
+.seg { display: flex; background: var(--seg); border: 1px solid var(--line); border-radius: 6px; padding: 2px; margin: 0 0 8px; }
 .seg button { flex: 1; border: 0; background: none; border-radius: 4px; padding: 1px 10px; font-size: 12px; cursor: default; }
 .seg button[aria-selected="true"] { background: var(--ctl); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18); }
 .theme-list { flex: 1; }
 .badge.soft { color: var(--muted); background: var(--hover); }
 .sidebar-foot { margin-top: auto; padding-top: 8px; }
-.gear { border: 0; background: none; color: var(--muted); padding: 4px 8px; border-radius: 6px; }
-.gear:hover { background: var(--hover); color: var(--text); }
+.gear { border: 1px solid var(--line); background: var(--panel); color: var(--muted); padding: 4px 8px; border-radius: 8px; }
+.gear:hover { background: var(--seg); color: var(--text); }
 .theme-panel { flex: none; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--bg); }
 .theme-head { display: flex; align-items: center; gap: 8px; }
 .theme-panel button { border: 1px solid var(--line); background: var(--ctl); border-radius: 6px; padding: 2px 9px; font-size: 12px; cursor: default; }
