@@ -113,15 +113,54 @@ pub async fn save_draft(
 }
 
 #[tauri::command]
-pub async fn create_tailored(
+pub async fn duplicate_cv(state: State<'_, AppState>, slug: String, from: String) -> Res<CvInfo> {
+    with_lib(&state, move |l| l.duplicate_cv(&slug, &from, Author::You)).await
+}
+
+#[tauri::command]
+pub async fn create_cv(
     state: State<'_, AppState>,
     slug: String,
-    from: String,
+    folder: Option<String>,
 ) -> Res<CvInfo> {
     with_lib(&state, move |l| {
-        l.create_tailored(&slug, &from, Author::You)
+        l.create_cv(&slug, folder.as_deref(), Author::You)
     })
     .await
+}
+
+#[tauri::command]
+pub async fn move_cv(
+    state: State<'_, AppState>,
+    name: String,
+    folder: Option<String>,
+) -> Res<CvInfo> {
+    with_lib(&state, move |l| l.move_cv(&name, folder.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn list_folders(state: State<'_, AppState>) -> Res<Vec<String>> {
+    with_lib(&state, |l| l.list_folders()).await
+}
+
+#[tauri::command]
+pub async fn create_folder(state: State<'_, AppState>, name: String) -> Res<()> {
+    with_lib(&state, move |l| l.create_folder(&name)).await
+}
+
+#[tauri::command]
+pub async fn rename_folder(state: State<'_, AppState>, name: String, new_name: String) -> Res<()> {
+    with_lib(&state, move |l| l.rename_folder(&name, &new_name)).await
+}
+
+#[tauri::command]
+pub async fn delete_folder(state: State<'_, AppState>, name: String) -> Res<()> {
+    with_lib(&state, move |l| l.delete_folder(&name)).await
+}
+
+#[tauri::command]
+pub async fn set_pinned(state: State<'_, AppState>, name: String, pinned: bool) -> Res<()> {
+    with_lib(&state, move |l| l.set_pinned(&name, pinned)).await
 }
 
 #[tauri::command]

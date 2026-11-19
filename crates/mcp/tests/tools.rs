@@ -21,7 +21,7 @@ async fn update_cv_invalid_returns_field_errors() {
     let (_d, s) = server();
     let r = s
         .update_cv(Parameters(UpdateCvArgs {
-            name: "main".into(),
+            name: "my-cv".into(),
             patch: vec![serde_json::from_value(
                 json!({"op":"replace","path":"/work/0/startDate","value":"not a date"}),
             )
@@ -39,7 +39,7 @@ async fn get_then_replace_roundtrip() {
     let (_d, s) = server();
     let r = s
         .get_cv(Parameters(NameArgs {
-            name: "main".into(),
+            name: "my-cv".into(),
         }))
         .await;
     assert_eq!(r.is_error, Some(false));
@@ -48,7 +48,7 @@ async fn get_then_replace_roundtrip() {
     cv["basics"]["name"] = json!("Changed Name");
     let r = s
         .replace_cv(Parameters(ReplaceCvArgs {
-            name: "main".into(),
+            name: "my-cv".into(),
             cv,
             base: v["base"].as_str().unwrap().into(),
             message: None,
@@ -57,7 +57,7 @@ async fn get_then_replace_roundtrip() {
     assert_eq!(r.is_error, Some(false), "{}", text(&r));
     let r = s
         .get_cv(Parameters(NameArgs {
-            name: "main".into(),
+            name: "my-cv".into(),
         }))
         .await;
     let v: Value = serde_json::from_str(&text(&r)).unwrap();
@@ -119,7 +119,7 @@ fn tools_list_has_14_tools_with_exact_names() {
         "get_cv",
         "update_cv",
         "replace_cv",
-        "create_tailored_cv",
+        "duplicate_cv",
         "cv_history",
         "restore_cv_version",
         "list_themes",
@@ -166,4 +166,25 @@ fn resources_have_uri_mime_and_text() {
         assert!(!v["text"].as_str().unwrap().is_empty());
     }
     assert!(resource_contents("jsoncv://nope").is_none());
+}
+
+#[tokio::test]
+async fn duplicate_cv_copies() {
+    let (_d, s) = server();
+    let r = s
+        .duplicate_cv(Parameters(DuplicateCvArgs {
+            name: "b".into(),
+            from: "my-cv".into(),
+        }))
+        .await;
+    assert!(!r.is_error.unwrap_or(false), "{}", text(&r));
+    let l: Value = serde_json::from_str(&text(&s.list_cvs().await)).unwrap();
+    let b = l
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "b")
+        .unwrap();
+    assert_eq!(b["folder"], Value::Null);
+    assert!(b.get("tailored_from").is_none());
 }

@@ -89,12 +89,12 @@ pub enum ExportFormatInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct NameArgs {
-    /// CV name: `main` or `tailored/<slug>`.
+    /// CV name (its slug, e.g. `stripe`).
     pub name: String,
 }
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateCvArgs {
-    /// CV name: `main` or `tailored/<slug>`.
+    /// CV name (its slug, e.g. `stripe`).
     pub name: String,
     /// RFC 6902 JSON Patch: an array of ops such as `{"op":"replace","path":"/basics/name","value":"A"}`. Paths are JSON pointers into the CV.
     pub patch: Vec<PatchOp>,
@@ -103,7 +103,7 @@ pub struct UpdateCvArgs {
 }
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReplaceCvArgs {
-    /// CV name: `main` or `tailored/<slug>`.
+    /// CV name (its slug, e.g. `stripe`).
     pub name: String,
     /// The complete new CV as a JSON object. Must satisfy jsoncv://schema.
     pub cv: Value,
@@ -113,22 +113,22 @@ pub struct ReplaceCvArgs {
     pub message: Option<String>,
 }
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct CreateTailoredArgs {
-    /// Slug for the new CV. It is created as `tailored/<name>`.
+pub struct DuplicateCvArgs {
+    /// Slug for the new CV: lowercase letters, digits and dashes.
     pub name: String,
-    /// CV to copy from. Defaults to `main`.
-    pub from: Option<String>,
+    /// CV to copy from.
+    pub from: String,
 }
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct HistoryArgs {
-    /// CV name: `main` or `tailored/<slug>`.
+    /// CV name (its slug, e.g. `stripe`).
     pub name: String,
     /// Maximum number of versions, newest first. Default 20.
     pub limit: Option<usize>,
 }
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RestoreArgs {
-    /// CV name: `main` or `tailored/<slug>`.
+    /// CV name (its slug, e.g. `stripe`).
     pub name: String,
     /// Version id (`commit`) from cv_history. Restoring adds a new version; history is kept.
     pub commit: String,
@@ -151,21 +151,21 @@ pub struct SaveThemeArgs {
 }
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SetThemeArgs {
-    /// CV name: `main` or `tailored/<slug>`.
+    /// CV name (its slug, e.g. `stripe`).
     pub name: String,
     /// Theme id to use for this CV.
     pub theme: String,
 }
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct PreviewArgs {
-    /// CV name: `main` or `tailored/<slug>`.
+    /// CV name (its slug, e.g. `stripe`).
     pub name: String,
     /// Theme id. Defaults to the CV's own theme.
     pub theme: Option<String>,
 }
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ExportArgs {
-    /// CV name: `main` or `tailored/<slug>`.
+    /// CV name (its slug, e.g. `stripe`).
     pub name: String,
     pub format: ExportFormatInput,
     /// Theme id. Defaults to the CV's own theme.
@@ -216,7 +216,7 @@ impl JsoncvServer {
 #[tool_router(vis = "pub")]
 impl JsoncvServer {
     #[tool(
-        description = "List all CVs in the library (name, theme, tailored_from, modified_ms, error)."
+        description = "List all CVs in the library (name, folder, pin, theme, modified_ms, error)."
     )]
     pub async fn list_cvs(&self) -> CallToolResult {
         done(self.lib.list_cvs())
@@ -257,16 +257,10 @@ impl JsoncvServer {
     }
 
     #[tool(
-        description = "Create a tailored CV as `tailored/<name>`, copied from `from` (default `main`)."
+        description = "Duplicate a CV as `name`, in the same folder as `from`. The copy is independent."
     )]
-    pub async fn create_tailored_cv(
-        &self,
-        Parameters(a): Parameters<CreateTailoredArgs>,
-    ) -> CallToolResult {
-        done(
-            self.lib
-                .create_tailored(&a.name, a.from.as_deref().unwrap_or("main"), Author::Agent),
-        )
+    pub async fn duplicate_cv(&self, Parameters(a): Parameters<DuplicateCvArgs>) -> CallToolResult {
+        done(self.lib.duplicate_cv(&a.name, &a.from, Author::Agent))
     }
 
     #[tool(description = "List versions of a CV, newest first (commit, author, message, time_ms).")]

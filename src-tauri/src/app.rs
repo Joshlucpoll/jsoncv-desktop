@@ -73,7 +73,7 @@ pub const MENU_COMMAND: &str = "menu-command";
 /// Menu items the UI handles; the ids are also the `MENU_COMMAND` payloads.
 #[cfg(target_os = "macos")]
 const UI_COMMANDS: [(&str, &str, &str); 4] = [
-    ("new-cv", "New Tailored CV…", "CmdOrCtrl+N"),
+    ("new-cv", "Duplicate CV…", "CmdOrCtrl+N"),
     ("edit", "Edit CV", "CmdOrCtrl+E"),
     ("export-pdf", "Export PDF", "CmdOrCtrl+Shift+E"),
     ("print", "Print…", "CmdOrCtrl+P"),
@@ -169,7 +169,14 @@ pub fn run() {
             commands::get_schema,
             commands::read_cv,
             commands::save_draft,
-            commands::create_tailored,
+            commands::duplicate_cv,
+            commands::create_cv,
+            commands::move_cv,
+            commands::list_folders,
+            commands::create_folder,
+            commands::rename_folder,
+            commands::delete_folder,
+            commands::set_pinned,
             commands::rename_cv,
             commands::delete_cv,
             commands::history,
@@ -390,10 +397,13 @@ mod tests {
     fn relevant_filters_paths() {
         let roots = [PathBuf::from("/lib")];
         let r = |p: &str| relevant(&roots, Path::new(p));
-        assert_eq!(r("/lib/main.cv.json").as_deref(), Some("main.cv.json"));
         assert_eq!(
-            r("/lib/tailored/a.cv.json").as_deref(),
-            Some("tailored/a.cv.json")
+            r("/lib/cvs/my-cv.cv.json").as_deref(),
+            Some("cvs/my-cv.cv.json")
+        );
+        assert_eq!(
+            r("/lib/cvs/jobs/a.cv.json").as_deref(),
+            Some("cvs/jobs/a.cv.json")
         );
         assert_eq!(r("/lib/.git/index"), None);
         assert_eq!(r("/lib/exports/main.pdf"), None);
@@ -406,14 +416,11 @@ mod tests {
     fn preview_renders_and_reports_errors() {
         let dir = tempfile::tempdir().unwrap();
         let lib = Library::open(dir.path(), &dir.path().join(".history.db")).unwrap();
-        let ok = render_uri(&lib, preview_url("main").as_str());
+        let ok = render_uri(&lib, preview_url("my-cv").as_str());
         assert!(!ok.contains("Cannot render"), "{ok}");
-        let bad = render_uri(
-            &lib,
-            "http://jsoncv-preview.localhost/render?cv=tailored%2Fnope",
-        );
+        let bad = render_uri(&lib, "http://jsoncv-preview.localhost/render?cv=nope");
         assert!(
-            bad.contains("Cannot render") && bad.contains("tailored/nope"),
+            bad.contains("Cannot render") && bad.contains("nope"),
             "{bad}"
         );
         assert!(render_uri(&lib, "jsoncv-preview://localhost/render").contains("Missing cv"));
@@ -423,21 +430,21 @@ mod tests {
     fn preview_of_broken_file_shows_last_saved_version() {
         let dir = tempfile::tempdir().unwrap();
         let lib = Library::open(dir.path(), &dir.path().join(".history.db")).unwrap();
-        let url = preview_url("main");
-        std::fs::write(dir.path().join("main.cv.json"), "{").unwrap();
+        let url = preview_url("my-cv");
+        std::fs::write(dir.path().join("cvs/my-cv.cv.json"), "{").unwrap();
         let page = render_uri(&lib, url.as_str());
         assert!(
-            page.contains("Mara Lindqvist") && page.contains("showing the last saved version"),
+            page.contains("Richard Hendriks") && page.contains("showing the last saved version"),
             "{page}"
         );
         std::fs::write(
-            dir.path().join("main.cv.json"),
+            dir.path().join("cvs/my-cv.cv.json"),
             r#"{"basics":{"name":"Broken"},"work":[{"startDate":"March"}]}"#,
         )
         .unwrap();
         let page = render_uri(&lib, url.as_str());
         assert!(
-            page.contains("Mara Lindqvist") && !page.contains("Broken"),
+            page.contains("Richard Hendriks") && !page.contains("Broken"),
             "{page}"
         );
         assert!(page.contains("showing the last saved version"));
