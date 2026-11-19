@@ -60,7 +60,7 @@ function SlugInput({ initial, label, placeholder = 'name, e.g. stripe', nested, 
   )
 }
 
-type Menu = { x: number; y: number } & ({ kind: 'cv'; cv: CvInfo } | { kind: 'folder'; name: string; empty: boolean } | { kind: 'new' })
+type Menu = { x: number; y: number } & ({ kind: 'cv'; cv: CvInfo } | { kind: 'folder'; name: string; empty: boolean })
 type Creating = { kind: 'duplicate'; from: string } | { kind: 'blank' } | { kind: 'folder' }
 
 export function CvList({ cvs, folders, loaded, selected, onSelect, onChanged, onError, onLeaveSelected, newSignal }: Props) {
@@ -268,10 +268,14 @@ export function CvList({ cvs, folders, loaded, selected, onSelect, onChanged, on
       {g.loose.map((c) => row(c, false, c.name))}
       {loaded && cvs.length === 0 && <p className="empty-note">No CVs yet</p>}
       {creating ? creatingInput : (
-        <button className="item add" title={`New CV or folder (duplicate the open CV with ${MOD}N)`} aria-haspopup="menu"
-          onClick={(e) => { e.stopPropagation(); openMenu(e.currentTarget, { kind: 'new', ...at(e.currentTarget) }) }}>
-          <Icon name="plus" size={12} /> New CV…
-        </button>
+        <div className="add-row">
+          <button className="item add" title={`New blank CV (duplicate the open CV with ${MOD}N)`} onClick={() => setCreating({ kind: 'blank' })}>
+            <Icon name="plus" size={12} /> New CV…
+          </button>
+          <button className="item add" title="New folder" onClick={() => setCreating({ kind: 'folder' })}>
+            <Icon name="folder" size={12} /> New folder…
+          </button>
+        </div>
       )}
       {menu && (
         <div className="menu" ref={menuEl} onKeyDown={onMenuKey} style={{ left: menu.x, top: menu.y }} role="menu">
@@ -280,12 +284,6 @@ export function CvList({ cvs, folders, loaded, selected, onSelect, onChanged, on
             <>
               <button role="menuitem" onClick={() => setRenaming({ kind: 'folder', name: menu.name })}>Rename…</button>
               {menu.empty && <button role="menuitem" className="danger" onClick={() => run(deleteFolder(menu.name))}>Delete</button>}
-            </>
-          )}
-          {menu.kind === 'new' && (
-            <>
-              <button role="menuitem" onClick={() => setCreating({ kind: 'blank' })}>Blank CV…</button>
-              <button role="menuitem" onClick={() => setCreating({ kind: 'folder' })}>New folder…</button>
             </>
           )}
         </div>
