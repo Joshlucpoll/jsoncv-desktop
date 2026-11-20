@@ -80,7 +80,8 @@ function ThemePicker({ cv, value: chosen, themes, onPick, onManage, onGuide }: {
   // A deleted or hand-edited theme renders as Classic, so show Classic too.
   const value = themes.length && !themes.some((t) => t.id === chosen) ? DEFAULT_THEME : chosen
   const current = themes.find((t) => t.id === value)
-  const pick = (id: string) => { setOpen(false); if (id !== value) onPick(id) }
+  // Compare with the CV's saved id: picking Classic over a deleted theme must clear that id.
+  const pick = (id: string) => { setOpen(false); if (id !== chosen) onPick(id) }
   return (
     <div className="popup" ref={box} onKeyDown={onKeyDown}>
       <button className="trigger theme-trigger" aria-haspopup="menu" aria-expanded={open} title="Theme" onClick={() => setOpen((o) => !o)}>

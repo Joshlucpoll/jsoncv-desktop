@@ -231,3 +231,22 @@ fn missing_history_folder_is_created_and_unwritable_is_an_error() {
     std::fs::write(&file, "x").unwrap();
     assert!(Library::open(&d.path().join("cvs"), &file.join("history.db")).is_err());
 }
+
+#[test]
+fn agent_has_edited_tracks_agent_versions() {
+    let d = TempDir::new().unwrap();
+    let lib = open(&d);
+    std::fs::write(d.path().join("cvs/a.cv.json"), cv("A")).unwrap();
+    lib.sweep_external_locked().unwrap();
+    assert!(!lib.agent_has_edited().unwrap());
+    let p: json_patch::Patch =
+        serde_json::from_value(json!([{"op":"replace","path":"/basics/name","value":"Ada"}]))
+            .unwrap();
+    lib.patch_cv("a", &p, Author::You, None).unwrap();
+    assert!(!lib.agent_has_edited().unwrap());
+    let p: json_patch::Patch =
+        serde_json::from_value(json!([{"op":"replace","path":"/basics/name","value":"Grace"}]))
+            .unwrap();
+    lib.patch_cv("a", &p, Author::Agent, None).unwrap();
+    assert!(lib.agent_has_edited().unwrap());
+}

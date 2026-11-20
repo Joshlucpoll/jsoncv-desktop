@@ -11,6 +11,7 @@ pub struct Editor {
     pub id: &'static str,
     pub label: &'static str,
     /// macOS bundle id.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub mac: Option<&'static str>,
     /// Command on `PATH` (Windows, Linux).
     #[cfg_attr(target_os = "macos", allow(dead_code))]
@@ -160,8 +161,18 @@ pub fn open(editor_id: &str, dir: &Path) -> io::Result<()> {
     #[cfg(not(target_os = "macos"))]
     {
         let cli = e.cli.and_then(which).ok_or_else(|| unsupported(e.label))?;
-        // Don't wait: some editors stay attached to the process that started them.
-        Command::new(cli).args(e.args).arg(dir).spawn().map(|_| ())
+        let mut cmd = Command::new(cli);
+        cmd.args(e.args).arg(dir);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000; // a .cmd shim would otherwise flash a console
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        let mut child = cmd.spawn()?;
+        // Some editors stay attached to the process that started them: reap it off-thread, never block.
+        std::thread::spawn(move || child.wait());
+        Ok(())
     }
 }
 

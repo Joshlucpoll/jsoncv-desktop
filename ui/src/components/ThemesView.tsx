@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { confirm } from '@tauri-apps/plugin-dialog'
 import { DEFAULT_THEME, type Editor, MOCK, type ThemeInfo, type ThemeReport, deleteTheme, duplicateTheme, errorMessage, openThemeIn, reveal, themeDirPath, themeReport } from '../api.ts'
 import { revealLabel } from '../lib/platform.ts'
@@ -58,13 +58,17 @@ export function NewTheme({ themes, from, onCreated, onCancel, onError }: NewProp
   const [name, setName] = useState('')
   const [src, setSrc] = useState(themes.some((t) => t.id === from) ? from : DEFAULT_THEME)
   const [err, setErr] = useState<string>()
+  const [busy, setBusy] = useState(false)
+  const inFlight = useRef(false) // state lags a same-tick double submit; the ref doesn't
   const id = themeIdFromName(name)
   const taken = themes.some((t) => t.id === id)
   const problem = !name.trim() ? undefined : !id ? 'Use at least one letter or digit.' : taken ? 'A theme with this folder already exists.' : undefined
 
   const submit = async () => {
-    if (!id || taken) return
-    try { onCreated(await duplicateTheme(src, id, name.trim())) } catch (e) { setErr(errorMessage(e)); onError(e) }
+    if (!id || taken || inFlight.current) return
+    inFlight.current = true
+    setBusy(true)
+    try { onCreated(await duplicateTheme(src, id, name.trim())) } catch (e) { setErr(errorMessage(e)); onError(e) } finally { inFlight.current = false; setBusy(false) }
   }
 
   return (
@@ -82,7 +86,7 @@ export function NewTheme({ themes, from, onCreated, onCancel, onError }: NewProp
         <span className={problem || err ? 'field-error' : 'muted'}>{problem ?? err ?? (id ? `Folder: themes/${id}` : ' ')}</span>
         <span className="spacer" />
         <button type="button" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="primary" disabled={!id || taken}>Create</button>
+        <button type="submit" className="primary" disabled={!id || taken || busy}>Create</button>
       </div>
     </form>
   )
@@ -95,8 +99,8 @@ function OpenWith({ id, editors, action, onAction, onError }: { id: string; edit
   const { open, setOpen, box, onKeyDown } = useMenu()
   const run = (a: string) => {
     setOpen(false)
-    onAction(a)
-    ;(a === 'reveal' ? themeDirPath(id).then(reveal) : openThemeIn(a, id)).catch(onError)
+    // Remember the choice only once it worked, so a broken editor never becomes the default.
+    ;(a === 'reveal' ? themeDirPath(id).then(reveal) : openThemeIn(a, id)).then(() => onAction(a), onError)
   }
   const label = (a: string) => a === 'reveal' ? revealLabel : `Open in ${editors.find((e) => e.id === a)?.label ?? a}`
   return (

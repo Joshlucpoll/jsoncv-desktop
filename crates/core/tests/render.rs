@@ -166,3 +166,16 @@ fn set_unknown_theme_rejected() {
         Err(CoreError::NotFound(_))
     ));
 }
+
+#[test]
+fn themes_list_keeps_a_theme_with_broken_meta() {
+    let (d, lib) = setup("x");
+    std::fs::write(d.path().join("themes/t1/theme.json"), "{ not json").unwrap();
+    let l = lib.list_themes().unwrap();
+    let t = l
+        .iter()
+        .find(|t| t.id == "t1")
+        .expect("broken theme stays listed");
+    assert_eq!(t.meta.name, "t1");
+    assert!(matches!(lib.get_theme("t1"), Err(CoreError::Json(_))));
+}

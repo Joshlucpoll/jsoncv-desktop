@@ -210,6 +210,15 @@ impl Library {
         self.locked(|tx| self.sweep_external(tx))
     }
 
+    /// Whether an agent has saved any CV version in this library (a sign one is set up).
+    pub fn agent_has_edited(&self) -> Result<bool, CoreError> {
+        Ok(connect(self.db())?.query_row(
+            "SELECT EXISTS(SELECT 1 FROM versions WHERE library = ?1 AND author = ?2)",
+            params![self.id(), Author::Agent.name()],
+            |r| r.get(0),
+        )?)
+    }
+
     /// Versions of `name`, newest first.
     pub fn history(&self, name: &str, limit: usize) -> Result<Vec<Version>, CoreError> {
         self.cv_path(name)?;

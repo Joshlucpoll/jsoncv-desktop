@@ -43,7 +43,7 @@ Josh chose A. It must work on all platforms, not only macOS.
 - Entry points: a "New theme…" button in the Settings → Themes header, and each row's "Duplicate…".
 
 ### Open in editor (Rust + UI)
-- New `src-tauri/src/editors.rs` holds a fixed list. Each entry has an id, a label, a macOS bundle id, a CLI command and an optional Windows-only or macOS-only flag. Entries: VS Code, Cursor, Windsurf, Zed, Sublime Text, Nova, BBEdit, Fleet, Terminal, iTerm, Windows Terminal.
+- New `src-tauri/src/editors.rs` holds a fixed list. Each entry has an id, a label, a macOS bundle id, a CLI command and an optional Windows-only or macOS-only flag. Entries: VS Code, Cursor, Windsurf, Zed, Sublime Text, Nova, BBEdit, Terminal, iTerm, Windows Terminal. (Fleet was dropped: JetBrains discontinued it.)
 - Detection: macOS looks up the bundle id. This works without the editor's shell command, which many users never install. Windows and Linux look for the CLI command on `PATH`.
 - Opening: macOS runs `open -b <bundle id> <dir>`. Windows and Linux run `<cli> <dir>`. Windows Terminal runs `wt -d <dir>`.
 - Commands: `list_editors()` returns `[{id, label}]` for installed editors only. `open_theme_in(editor_id, theme_id)` takes an editor id from the fixed list and resolves the folder with `theme_dir`, so the UI cannot run an arbitrary command or open an arbitrary path.

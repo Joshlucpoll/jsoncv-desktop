@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { errorMessage, openLink, themeGuideHtml } from '../api.ts'
+import { agentHasEdited, errorMessage, openLink, themeGuideHtml } from '../api.ts'
 import { themePrompt } from '../lib/themes.ts'
 import { Icon } from './Icon.tsx'
 import { Copy } from './Settings.tsx'
@@ -9,11 +9,14 @@ type Props = { cv: string | null; onAgents: () => void; onClose: () => void; onE
 /** "How do I create a theme?": agents first, then your own editor, then the full guide. */
 export function ThemeGuide({ cv, onAgents, onClose, onError }: Props) {
   const [html, setHtml] = useState<string>()
+  const [hasAgent, setHasAgent] = useState(false)
   const close = useRef<HTMLButtonElement>(null)
   useEffect(() => { close.current?.focus() }, [])
   useEffect(() => {
     let live = true
     themeGuideHtml().then((h) => live && setHtml(h), (e) => live && setHtml(`<p>${errorMessage(e).replace(/</g, '&lt;')}</p>`))
+    // shortcut: "an agent has saved a CV version" stands in for "an agent is connected"; upgrade if the MCP server ever reports connections
+    agentHasEdited().then((v) => live && setHasAgent(v), () => {})
     return () => { live = false }
   }, [])
   return (
@@ -29,7 +32,7 @@ export function ThemeGuide({ cv, onAgents, onClose, onError }: Props) {
           <p>An agent can write a theme, check which fields it hides, and preview it.</p>
           <div className="guide-actions">
             <Copy text={themePrompt(cv)} label="Copy prompt" />
-            <button className="link" onClick={onAgents}>Set up an agent</button>
+            {!hasAgent && <button className="link" onClick={onAgents}>Set up an agent</button>}
           </div>
         </section>
         <section>

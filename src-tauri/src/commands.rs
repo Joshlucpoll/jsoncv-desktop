@@ -541,6 +541,12 @@ pub async fn open_link(url: String) -> Res<()> {
     .await
 }
 
+/// Whether an agent has edited a CV in this library; the theme guide hides "Set up an agent" then.
+#[tauri::command]
+pub async fn agent_has_edited(state: State<'_, AppState>) -> Res<bool> {
+    with_lib(&state, |l| l.agent_has_edited()).await
+}
+
 /// Called by the UI once its unsaved-draft guard allows quitting.
 #[tauri::command]
 pub fn exit_app(app: AppHandle) {

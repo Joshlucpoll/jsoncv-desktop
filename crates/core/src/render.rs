@@ -142,8 +142,19 @@ impl Library {
         };
         ids.sort();
         for id in ids {
-            if let Ok(t) = self.get_theme(&id) {
-                out.push(t.info);
+            match self.get_theme(&id) {
+                Ok(t) => out.push(t.info),
+                // Unreadable theme.json: keep it listed under its id, so its error shows and it can be deleted.
+                Err(CoreError::Json(_)) => out.push(ThemeInfo {
+                    meta: ThemeMeta {
+                        name: id.clone(),
+                        description: String::new(),
+                        page: PageMeta { size: PageSize::A4 },
+                    },
+                    id,
+                    builtin: false,
+                }),
+                Err(_) => {} // not a theme (for example an empty folder)
             }
         }
         Ok(out)
