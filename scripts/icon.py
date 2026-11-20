@@ -1,5 +1,5 @@
 # Generates the app icon: a window on the running meander from ui/src/components/Mosaic.tsx, set in tesserae on a macOS squircle.
-# Run: python3 scripts/icon.py src-tauri/icons/icon.svg && cargo tauri icon src-tauri/icons/icon.svg && rm -rf src-tauri/icons/{android,ios}
+# Run: python3 scripts/icon.py src-tauri/icons/icon.svg && cargo tauri icon src-tauri/icons/icon.svg && rm -rf src-tauri/icons/{android,ios} && cp src-tauri/icons/icon.svg assets/icon.svg
 import math, random, sys
 KEY = ['#########.', '#.......#.', '#.#####.#.', '#.#...#.#.', '#.#.#.#.#.', '#.#.#...#.', '#.#.#####.', '#.#.......', '#.########']  # keep in sync with Mosaic.tsx
 # A 13-tessera window on the running frieze: one whole key in the middle, its neighbours cut off at both edges.
