@@ -190,6 +190,7 @@ pub fn run() {
             commands::list_themes,
             commands::theme_report,
             commands::duplicate_theme,
+            commands::delete_theme,
             commands::set_cv_theme,
             commands::set_page_mode,
             commands::connect_agent,

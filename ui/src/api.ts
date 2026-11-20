@@ -48,7 +48,8 @@ export const previewHtml = (cv: string, theme?: string, commit?: string) => invo
 export const restore = (name: string, commit: string) => invoke<Saved>('restore', { name, commit })
 export const listThemes = () => invoke<ThemeInfo[]>('list_themes')
 export const themeReport = (id: string) => invoke<ThemeReport>('theme_report', { id })
-export const duplicateTheme = (id: string, newId: string) => invoke<ThemeInfo>('duplicate_theme', { id, newId })
+export const duplicateTheme = (id: string, newId: string, name?: string) => invoke<ThemeInfo>('duplicate_theme', { id, newId, name: name ?? null })
+export const deleteTheme = (id: string) => invoke<void>('delete_theme', { id })
 export const setCvTheme = (name: string, themeId: string) => invoke<Saved>('set_cv_theme', { name, themeId })
 /** Continuous: one long page in the preview and the PDF; otherwise paper-sized pages. */
 export const setPageMode = (name: string, continuous: boolean) => invoke<Saved>('set_page_mode', { name, continuous })

@@ -104,7 +104,7 @@ fn tracking_edge_constructs() {
 fn duplicate_rejects_builtin_prefix_target() {
     let (_d, lib) = lib();
     assert!(matches!(
-        lib.duplicate_theme("builtin:classic", "builtin:x", Author::You),
+        lib.duplicate_theme("builtin:classic", "builtin:x", None, Author::You),
         Err(CoreError::BadName(_))
     ));
 }
@@ -166,19 +166,46 @@ fn save_theme_good_template_reports_missing() {
 fn duplicate_theme_copies_builtin_and_assets() {
     let (d, lib) = lib();
     let info = lib
-        .duplicate_theme("builtin:classic", "my-classic", Author::You)
+        .duplicate_theme("builtin:classic", "my-classic", None, Author::You)
         .unwrap();
     assert_eq!(info.meta.name, "Classic copy");
     assert!(!info.builtin);
     assert!(
-        matches!(lib.duplicate_theme("builtin:classic", "my-classic", Author::You), Err(CoreError::BadName(m)) if m == "Theme my-classic already exists")
+        matches!(lib.duplicate_theme("builtin:classic", "my-classic", None, Author::You), Err(CoreError::BadName(m)) if m == "Theme my-classic already exists")
     );
     std::fs::create_dir_all(d.path().join("themes/my-classic/assets")).unwrap();
     std::fs::write(d.path().join("themes/my-classic/assets/f.txt"), "hi").unwrap();
-    lib.duplicate_theme("my-classic", "again", Author::You)
+    lib.duplicate_theme("my-classic", "again", None, Author::You)
         .unwrap();
     assert_eq!(
         std::fs::read_to_string(d.path().join("themes/again/assets/f.txt")).unwrap(),
         "hi"
     );
+}
+
+#[test]
+fn duplicate_theme_uses_given_name() {
+    let (_d, lib) = lib();
+    let info = lib
+        .duplicate_theme("builtin:classic", "navy", Some("Navy"), Author::You)
+        .unwrap();
+    assert_eq!(info.meta.name, "Navy");
+    assert_eq!(lib.get_theme("navy").unwrap().info.meta.name, "Navy");
+}
+
+#[test]
+fn delete_theme_refuses_builtin_and_unknown() {
+    let (_d, lib) = lib();
+    assert!(matches!(
+        lib.delete_theme("builtin:classic", Author::You),
+        Err(CoreError::ReadOnly(_))
+    ));
+    assert!(matches!(
+        lib.delete_theme("nope", Author::You),
+        Err(CoreError::NotFound(_))
+    ));
+    assert!(matches!(
+        lib.delete_theme("../x", Author::You),
+        Err(CoreError::BadName(_))
+    ));
 }

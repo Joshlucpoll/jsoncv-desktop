@@ -242,11 +242,17 @@ pub async fn duplicate_theme(
     state: State<'_, AppState>,
     id: String,
     new_id: String,
+    name: Option<String>,
 ) -> Res<ThemeInfo> {
     with_lib(&state, move |l| {
-        l.duplicate_theme(&id, &new_id, Author::You)
+        l.duplicate_theme(&id, &new_id, name.as_deref(), Author::You)
     })
     .await
+}
+
+#[tauri::command]
+pub async fn delete_theme(state: State<'_, AppState>, id: String) -> Res<()> {
+    with_lib(&state, move |l| l.delete_theme(&id, Author::You)).await
 }
 
 #[tauri::command]

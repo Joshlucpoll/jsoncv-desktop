@@ -21,3 +21,4 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] 
 chromiumoxide = { version = "0.9", default-features = false }
 futures-util = "0.3"
 tempfile = "3"
+trash = "5"

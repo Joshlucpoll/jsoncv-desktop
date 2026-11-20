@@ -210,6 +210,7 @@ impl Library {
         &self,
         id: &str,
         new_id: &str,
+        name: Option<&str>,
         _author: Author, // themes are not versioned
     ) -> Result<ThemeInfo, CoreError> {
         let src = self.get_theme(id)?;
@@ -225,7 +226,9 @@ impl Library {
             let res = (|| {
                 std::fs::create_dir_all(&dir)?;
                 let meta = ThemeMeta {
-                    name: format!("{} copy", src.info.meta.name),
+                    name: name
+                        .map(str::to_string)
+                        .unwrap_or_else(|| format!("{} copy", src.info.meta.name)),
                     ..src.info.meta.clone()
                 };
                 write_atomic(&dir.join("template.html.j2"), src.template.as_bytes())?;
@@ -245,6 +248,21 @@ impl Library {
             res
         })?;
         Ok(self.get_theme(new_id)?.info)
+    }
+
+    /// Moves a custom theme's folder to the OS Trash: themes have no history, so a plain delete could lose work.
+    pub fn delete_theme(&self, id: &str, _author: Author) -> Result<(), CoreError> {
+        if id.starts_with("builtin:") {
+            return Err(CoreError::ReadOnly(format!("{id} is a built-in theme")));
+        }
+        let dir = self.theme_dir(id)?;
+        self.locked(|tx| {
+            self.sweep_external(tx)?;
+            if !dir.is_dir() {
+                return Err(CoreError::NotFound(format!("Theme {id}")));
+            }
+            trash::delete(&dir).map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))
+        })
     }
 
     pub fn render(&self, cv: &serde_json::Value, theme_id: &str) -> Result<String, CoreError> {

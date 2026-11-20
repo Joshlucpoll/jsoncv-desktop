@@ -67,7 +67,8 @@ mockIPC(
       case 'theme_report': return a.id === 'my-theme'
         ? { render_error: null, missing: ['awards', 'work[].highlights', 'basics.location.region'] }
         : { render_error: null, missing: [] }
-      case 'duplicate_theme': { const t = theme(a.newId, a.newId, false); themes.push(t); return t }
+      case 'duplicate_theme': { const t = theme(a.newId, a.name ?? a.newId, false); themes.push(t); return t }
+      case 'delete_theme': themes.splice(themes.findIndex((t) => t.id === a.id), 1); return null
       case 'export': return a.path
       case 'print_cv': case 'reveal': return null
       case 'theme_dir_path': return `~/Documents/CVs/themes/${a.id}`
