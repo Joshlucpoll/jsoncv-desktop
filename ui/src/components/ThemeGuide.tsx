@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { errorMessage, themeGuideHtml } from '../api.ts'
+import { errorMessage, openLink, themeGuideHtml } from '../api.ts'
 import { themePrompt } from '../lib/themes.ts'
 import { Icon } from './Icon.tsx'
 import { Copy } from './Settings.tsx'
 
-type Props = { cv: string | null; onAgents: () => void; onClose: () => void }
+type Props = { cv: string | null; onAgents: () => void; onClose: () => void; onError: (e: unknown) => void }
 
 /** "How do I create a theme?": agents first, then your own editor, then the full guide. */
-export function ThemeGuide({ cv, onAgents, onClose }: Props) {
+export function ThemeGuide({ cv, onAgents, onClose, onError }: Props) {
   const [html, setHtml] = useState<string>()
   const close = useRef<HTMLButtonElement>(null)
   useEffect(() => { close.current?.focus() }, [])
@@ -39,7 +39,13 @@ export function ThemeGuide({ cv, onAgents, onClose }: Props) {
         <section>
           <h3>Reference</h3>
           {/* Safe: the guide is bundled with the app, and the renderer escapes raw HTML in it. */}
-          <div className="guide-ref" dangerouslySetInnerHTML={{ __html: html ?? '' }} />
+          {/* A link must not navigate the app's own window: open web links in the browser, drop the rest. */}
+          <div className="guide-ref" dangerouslySetInnerHTML={{ __html: html ?? '' }} onClick={(e) => {
+            const a = (e.target as HTMLElement).closest('a')
+            if (!a) return
+            e.preventDefault()
+            if (/^https?:/i.test(a.href)) openLink(a.href).catch(onError)
+          }} />
         </section>
       </div>
     </div>

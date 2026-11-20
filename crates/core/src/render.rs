@@ -261,7 +261,9 @@ impl Library {
             if !dir.is_dir() {
                 return Err(CoreError::NotFound(format!("Theme {id}")));
             }
-            trash::delete(&dir).map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))
+            trash_context()
+                .delete(&dir)
+                .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))
         })
     }
 
@@ -332,6 +334,19 @@ impl Library {
             Ok(_) => Ok(id.to_string()),
         }
     }
+}
+
+/// The OS Trash. On macOS, NSFileManager instead of the default Finder script: Finder asks for
+/// Apple Events permission, and that prompt would hold the library lock (no "Put Back", though).
+fn trash_context() -> trash::TrashContext {
+    #[allow(unused_mut)]
+    let mut ctx = trash::TrashContext::default();
+    #[cfg(target_os = "macos")]
+    {
+        use trash::macos::{DeleteMethod, TrashContextExtMacos};
+        ctx.set_delete_method(DeleteMethod::NsFileManager);
+    }
+    ctx
 }
 
 fn report(template: &str) -> Result<ThemeReport, CoreError> {
@@ -573,6 +588,17 @@ mod tests {
         assert_eq!(fd("2020-13", "%Y"), "2020-13");
         assert_eq!(format_date(&Value::UNDEFINED, "%Y"), "");
         assert_eq!(format_date(&Value::from(()), "%Y"), "");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn trash_uses_file_manager_not_finder() {
+        use trash::macos::{DeleteMethod, TrashContextExtMacos};
+        // Finder asks for Apple Events permission, and that prompt would hold the library lock.
+        assert!(matches!(
+            trash_context().delete_method(),
+            DeleteMethod::NsFileManager
+        ));
     }
 
     #[test]

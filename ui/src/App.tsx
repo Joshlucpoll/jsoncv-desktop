@@ -303,7 +303,7 @@ export default function App() {
         />
       )}
       {/* After Settings so it stacks on top; its Escape never reaches the Settings scrim. */}
-      {guideOpen && <ThemeGuide cv={current ?? null} onClose={() => setGuideOpen(false)} onAgents={() => { setGuideOpen(false); setSettingsOpen('agents') }} />}
+      {guideOpen && <ThemeGuide cv={current ?? null} onError={fail} onClose={() => setGuideOpen(false)} onAgents={() => { setGuideOpen(false); setSettingsOpen('agents') }} />}
       {diffFor && <DiffView name={diffFor.name} commit={diffFor.commit} mode="change" toggle title={diffFor.title} onClose={() => setDiffFor(undefined)} />}
     </div>
   )

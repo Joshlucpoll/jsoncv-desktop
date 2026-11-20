@@ -73,7 +73,8 @@ mockIPC(
       case 'print_cv': case 'reveal': return null
       case 'list_editors': return [{ id: 'vscode', label: 'VS Code' }, { id: 'zed', label: 'Zed' }]
       case 'open_theme_in': console.info(`[mock] open ${a.id} in ${a.editor}`); return null
-      case 'theme_guide_html': return '<h1>Writing a jsoncv theme</h1><p>A theme turns a CV (JSON) into one HTML page.</p><table><thead><tr><th>Helper</th><th>Use</th></tr></thead><tbody><tr><td><code>markdown</code></td><td>Render Markdown</td></tr></tbody></table><pre><code>{{ cv.basics.name }}</code></pre>'
+      case 'open_link': console.info(`[mock] open ${a.url}`); return null
+      case 'theme_guide_html': return '<h1>Writing a jsoncv theme</h1><p>A theme turns a CV (JSON) into one HTML page. See <a href="https://docs.rs/minijinja">MiniJinja</a>.</p><table><thead><tr><th>Helper</th><th>Use</th></tr></thead><tbody><tr><td><code>markdown</code></td><td>Render Markdown</td></tr></tbody></table><pre><code>{{ cv.basics.name }}</code></pre>'
       case 'theme_dir_path': return `~/Documents/CVs/themes/${a.id}`
       // Close/quit guard: log instead of closing so the flow is visible in the browser console.
       case 'exit_app': case 'plugin:window|destroy': console.info(`[mock] ${cmd}: app would close`); return null

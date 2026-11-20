@@ -86,17 +86,27 @@ fn find_in(path_var: &OsStr, exts: &[&str], cmd: &str) -> Option<PathBuf> {
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 fn which(cmd: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
-    let pathext = if cfg!(windows) {
-        std::env::var("PATHEXT")
-            .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into())
-            .to_lowercase()
-    } else {
-        String::new()
-    };
-    let exts: Vec<&str> = std::iter::once("")
-        .chain(pathext.split(';').filter(|e| !e.is_empty()))
-        .collect();
-    find_in(&path, &exts, cmd)
+    let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+    let exts = path_exts(cfg!(windows), &pathext);
+    find_in(
+        &path,
+        &exts.iter().map(String::as_str).collect::<Vec<_>>(),
+        cmd,
+    )
+}
+
+/// File extensions to try: `PATHEXT` on Windows (never the bare name, which may be a shell
+/// script Windows cannot run), the bare name elsewhere.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn path_exts(windows: bool, pathext: &str) -> Vec<String> {
+    if !windows {
+        return vec![String::new()];
+    }
+    pathext
+        .split(';')
+        .filter(|e| !e.is_empty())
+        .map(str::to_lowercase)
+        .collect()
 }
 
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -179,6 +189,13 @@ mod tests {
         );
         assert_eq!(find_in(&path, &[""], "code"), None);
         assert_eq!(find_in(&path, &["", ".cmd"], "zed"), None);
+    }
+
+    #[test]
+    fn path_exts_skips_bare_name_on_windows() {
+        // VS Code's bin\ holds both `code` (a shell script) and `code.cmd`; only the .cmd runs.
+        assert_eq!(path_exts(true, ".EXE;.CMD;"), vec![".exe", ".cmd"]);
+        assert_eq!(path_exts(false, ".EXE"), vec![""]);
     }
 
     #[cfg(unix)]

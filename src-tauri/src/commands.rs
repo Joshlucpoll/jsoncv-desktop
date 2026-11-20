@@ -523,6 +523,24 @@ pub fn theme_guide_html() -> String {
     jsoncv_core::render::markdown_html(jsoncv_core::THEME_GUIDE)
 }
 
+fn is_web_url(url: &str) -> bool {
+    let u = url.trim_start().to_ascii_lowercase();
+    u.starts_with("https://") || u.starts_with("http://")
+}
+
+/// Opens a web link (from the theme guide) in the default browser instead of the app window.
+#[tauri::command]
+pub async fn open_link(url: String) -> Res<()> {
+    if !is_web_url(&url) {
+        return Err(CoreError::BadPath(url).into());
+    }
+    blocking(move || {
+        tauri_plugin_opener::open_url(&url, None::<&str>)
+            .map_err(|e| std::io::Error::other(e.to_string()).into())
+    })
+    .await
+}
+
 /// Called by the UI once its unsaved-draft guard allows quitting.
 #[tauri::command]
 pub fn exit_app(app: AppHandle) {
@@ -537,6 +555,15 @@ pub fn binary_path() -> Res<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_web_links_open_externally() {
+        assert!(is_web_url("https://docs.rs/minijinja"));
+        assert!(is_web_url("http://example.com"));
+        assert!(!is_web_url("file:///etc/passwd"));
+        assert!(!is_web_url("javascript:alert(1)"));
+        assert!(!is_web_url("/Applications/Calculator.app"));
+    }
 
     #[test]
     fn dir_usage_sums_nested_files() {

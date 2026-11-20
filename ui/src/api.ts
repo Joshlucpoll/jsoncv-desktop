@@ -68,6 +68,7 @@ export const binaryPath = () => invoke<string>('binary_path')
 export type Editor = { id: string; label: string }
 export const listEditors = () => invoke<Editor[]>('list_editors')
 export const openThemeIn = (editor: string, id: string) => invoke<void>('open_theme_in', { editor, id })
+export const openLink = (url: string) => invoke<void>('open_link', { url })
 export const themeGuideHtml = () => invoke<string>('theme_guide_html')
 export const themeDirPath = (id: string) => invoke<string>('theme_dir_path', { id })
 export const exitApp = () => invoke<void>('exit_app')

@@ -206,6 +206,7 @@ pub fn run() {
             commands::list_editors,
             commands::open_theme_in,
             commands::theme_guide_html,
+            commands::open_link,
             commands::exit_app,
         ])
         .run(tauri::generate_context!())
