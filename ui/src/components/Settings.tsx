@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { type AgentId, type CvInfo, type LibraryConfig, type LibraryStats, type ThemeInfo, connectAgent, errorMessage, libraryStats, reveal } from '../api.ts'
+import { type AgentId, DEFAULT_THEME, type CvInfo, type LibraryConfig, type LibraryStats, type ThemeInfo, connectAgent, errorMessage, libraryStats, reveal } from '../api.ts'
 import { MOD, revealLabel } from '../lib/platform.ts'
 import { Meander } from './Mosaic.tsx'
 import { Icon, type IconName } from './Icon.tsx'
 import { Logo, type LogoName } from './Logo.tsx'
-import { ThemeRow } from './ThemesView.tsx'
+import { NewTheme, ThemeRow } from './ThemesView.tsx'
 import { useMenu } from '../lib/menu.ts'
 
 const copy = (text: string) => navigator.clipboard?.writeText(text)
@@ -197,6 +197,29 @@ function Library({ config, cvs, themes, onChange, onError }: { config?: LibraryC
   )
 }
 
+function Themes({ cvs, themes, reloadKey, onThemesChanged, onError }: { cvs: CvInfo[]; themes: ThemeInfo[]; reloadKey: number; onThemesChanged: () => void; onError: (e: unknown) => void }) {
+  const [newFrom, setNewFrom] = useState<string>() // undefined = dialog closed
+  return (
+    <>
+      <p className="muted lead">Themes are files: a template and a stylesheet. The easiest way to make one is to ask your agent. You can also open a theme in your editor.</p>
+      <div className="theme-actions">
+        <button disabled>How do I create a theme?</button>
+        <button className="primary" onClick={() => setNewFrom(DEFAULT_THEME)}><Icon name="plus" /> New theme…</button>
+      </div>
+      {newFrom !== undefined && (
+        <NewTheme key={newFrom} themes={themes} from={newFrom} onError={onError} onCancel={() => setNewFrom(undefined)}
+          onCreated={() => { setNewFrom(undefined); onThemesChanged() }} />
+      )}
+      <div className="theme-rows">
+        {themes.map((t) => (
+          <ThemeRow key={t.id} theme={t} reloadKey={reloadKey} usedBy={cvs.filter((c) => c.theme === t.id).map((c) => c.name)}
+            onDuplicate={() => setNewFrom(t.id)} onDeleted={onThemesChanged} onError={onError} />
+        ))}
+      </div>
+    </>
+  )
+}
+
 type Props = {
   cvs: CvInfo[]; config?: LibraryConfig; binary: string; themes: ThemeInfo[]; reloadKey: number; section?: SettingsSection
   onChange: () => void; onThemesChanged: () => void; onError: (e: unknown) => void; onClose: () => void
@@ -222,14 +245,7 @@ export function Settings({ cvs, config, binary, themes, reloadKey, section: init
         <div className="settings-body">
           <header><h2>{current.label}</h2><span className="spacer" /><button ref={done} className="icon-btn close" aria-label="Close" title="Close (Esc)" onClick={onClose}><Icon name="x" size={16} /></button></header>
           {section === 'library' && <Library config={config} cvs={cvs} themes={themes} onChange={onChange} onError={onError} />}
-          {section === 'themes' && (
-            <>
-              <p className="muted lead">Pick a theme per CV from the toolbar. Duplicate one to make it your own; its files open in any editor.</p>
-              <div className="theme-rows">
-                {themes.map((t) => <ThemeRow key={t.id} theme={t} reloadKey={reloadKey} onDuplicated={onThemesChanged} onError={onError} />)}
-              </div>
-            </>
-          )}
+          {section === 'themes' && <Themes cvs={cvs} themes={themes} reloadKey={reloadKey} onThemesChanged={onThemesChanged} onError={onError} />}
           {section === 'agents' && <Agents binary={binary} />}
         </div>
       </div>

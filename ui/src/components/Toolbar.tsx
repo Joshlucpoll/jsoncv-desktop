@@ -64,7 +64,7 @@ function OptionsMenu({ json, onJson, continuous, onPageMode }: Pick<Props, 'json
   )
 }
 
-function ThemePicker({ cv, value, themes, onPick, onManage }: { cv: string; value: string; themes: ThemeInfo[]; onPick: (id: string) => void; onManage: () => void }) {
+function ThemePicker({ cv, value: chosen, themes, onPick, onManage }: { cv: string; value: string; themes: ThemeInfo[]; onPick: (id: string) => void; onManage: () => void }) {
   const { open, setOpen, box, onKeyDown } = useMenu()
   const [reports, setReports] = useState<Record<string, ThemeReport>>({})
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
@@ -77,6 +77,8 @@ function ThemePicker({ cv, value, themes, onPick, onManage }: { cv: string; valu
     }
     return () => { live = false }
   }, [open, themes, cv])
+  // A deleted or hand-edited theme renders as Classic, so show Classic too.
+  const value = themes.length && !themes.some((t) => t.id === chosen) ? DEFAULT_THEME : chosen
   const current = themes.find((t) => t.id === value)
   const pick = (id: string) => { setOpen(false); if (id !== value) onPick(id) }
   return (

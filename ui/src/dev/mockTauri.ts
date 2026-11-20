@@ -59,7 +59,7 @@ mockIPC(
       case 'create_folder': folders.push(a.name); return null
       case 'rename_folder': folders[folders.indexOf(a.name)] = a.newName; cvs.forEach((x) => { if (x.folder === a.name) x.folder = a.newName }); return null
       case 'delete_folder': folders.splice(folders.indexOf(a.name), 1); return null
-      case 'list_themes': return themes
+      case 'list_themes': return [...themes] // a fresh array, as the real command returns
       case 'get_config': return cfg
       case 'set_library': cfg = { ...cfg, library: a.path }; return cfg
       case 'set_page_mode': { const cv = cvs.find((c) => c.name === a.name); if (cv) cv.continuous = !!(args as { continuous?: boolean }).continuous; return { commit: 'pm', base: 'h4' } }
