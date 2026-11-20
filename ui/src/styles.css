@@ -584,3 +584,19 @@ button.status.error { cursor: pointer; }
 .manual { margin-top: 14px; }
 .manual summary { cursor: default; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
 .manual .snippet-head button { padding: 1px 8px; }
+
+.theme-guide { width: 640px; }
+.theme-guide h2 { margin: 0; font: 17px var(--display); letter-spacing: 0.02em; }
+.theme-guide section + section { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; }
+.theme-guide h3 { margin: 6px 0 4px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.theme-guide p { margin: 0 0 8px; font-size: 13px; }
+.guide-actions { display: flex; align-items: center; gap: 10px; }
+.guide-actions button:not(.link) { border: 1px solid var(--line); background: var(--ctl); border-radius: 6px; padding: 3px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+.guide-ref { max-height: 42vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px 12px; font-size: 12.5px; }
+.guide-ref h1 { font: 15px var(--display); margin: 10px 0 6px; }
+.guide-ref h2 { font: 13.5px var(--display); margin: 14px 0 4px; }
+.guide-ref h3 { font-size: 12.5px; }
+.guide-ref pre { background: var(--ctl); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; overflow-x: auto; font-size: 11.5px; }
+.guide-ref code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.95em; }
+.guide-ref table { border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 11.5px; }
+.guide-ref th, .guide-ref td { border: 1px solid var(--line); padding: 3px 6px; text-align: left; vertical-align: top; }

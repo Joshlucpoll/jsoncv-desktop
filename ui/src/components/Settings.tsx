@@ -47,7 +47,7 @@ const setupPrompt = (binary: string) => `Please add an MCP server to your config
 
 It comes from the jsoncv-desktop app. Add it at user (global) scope if you can, so it works in every project. Find where your MCP servers are configured, add this entry without changing any other server, then tell me whether I need to restart you.`
 
-function Copy({ text, label = 'Copy' }: { text: string; label?: string }) {
+export function Copy({ text, label = 'Copy' }: { text: string; label?: string }) {
   const [done, setDone] = useState(false)
   useEffect(() => {
     if (!done) return
@@ -200,7 +200,7 @@ function Library({ config, cvs, themes, onChange, onError }: { config?: LibraryC
   )
 }
 
-function Themes({ cvs, themes, reloadKey, onThemesChanged, onError }: { cvs: CvInfo[]; themes: ThemeInfo[]; reloadKey: number; onThemesChanged: () => void; onError: (e: unknown) => void }) {
+function Themes({ cvs, themes, reloadKey, onThemesChanged, onGuide, onError }: { cvs: CvInfo[]; themes: ThemeInfo[]; reloadKey: number; onThemesChanged: () => void; onGuide: () => void; onError: (e: unknown) => void }) {
   const [newFrom, setNewFrom] = useState<string>() // undefined = dialog closed
   const [editors, setEditors] = useState<Editor[]>([])
   const [openWith, setOpenWith] = useState('reveal')
@@ -223,7 +223,7 @@ function Themes({ cvs, themes, reloadKey, onThemesChanged, onError }: { cvs: CvI
     <>
       <p className="muted lead">Themes are files: a template and a stylesheet. The easiest way to make one is to ask your agent. You can also open a theme in your editor.</p>
       <div className="theme-actions">
-        <button disabled>How do I create a theme?</button>
+        <button onClick={onGuide}>How do I create a theme?</button>
         <button className="primary" onClick={() => setNewFrom(DEFAULT_THEME)}><Icon name="plus" /> New theme…</button>
       </div>
       {newFrom !== undefined && (
@@ -241,12 +241,11 @@ function Themes({ cvs, themes, reloadKey, onThemesChanged, onError }: { cvs: CvI
 }
 
 type Props = {
-  cvs: CvInfo[]; config?: LibraryConfig; binary: string; themes: ThemeInfo[]; reloadKey: number; section?: SettingsSection
-  onChange: () => void; onThemesChanged: () => void; onError: (e: unknown) => void; onClose: () => void
+  cvs: CvInfo[]; config?: LibraryConfig; binary: string; themes: ThemeInfo[]; reloadKey: number; section?: SettingsSection; onSection: (s: SettingsSection) => void
+  onChange: () => void; onThemesChanged: () => void; onGuide: () => void; onError: (e: unknown) => void; onClose: () => void
 }
 
-export function Settings({ cvs, config, binary, themes, reloadKey, section: initial = 'library', onChange, onThemesChanged, onError, onClose }: Props) {
-  const [section, setSection] = useState<SettingsSection>(initial)
+export function Settings({ cvs, config, binary, themes, reloadKey, section = 'library', onSection, onChange, onThemesChanged, onGuide, onError, onClose }: Props) {
   const done = useRef<HTMLButtonElement>(null)
   useEffect(() => { done.current?.focus() }, [])
   const current = SECTIONS.find((s) => s.id === section)!
@@ -257,7 +256,7 @@ export function Settings({ cvs, config, binary, themes, reloadKey, section: init
           <div className="settings-title">Settings</div>
           <div className="frieze"><Meander periods={5} /></div>
           {SECTIONS.map((s) => (
-            <button key={s.id} className={`settings-tab${s.id === section ? ' on' : ''}`} aria-current={s.id === section ? 'page' : undefined} onClick={() => setSection(s.id)}>
+            <button key={s.id} className={`settings-tab${s.id === section ? ' on' : ''}`} aria-current={s.id === section ? 'page' : undefined} onClick={() => onSection(s.id)}>
               <Icon name={s.icon} /> {s.label}
             </button>
           ))}
@@ -265,7 +264,7 @@ export function Settings({ cvs, config, binary, themes, reloadKey, section: init
         <div className="settings-body">
           <header><h2>{current.label}</h2><span className="spacer" /><button ref={done} className="icon-btn close" aria-label="Close" title="Close (Esc)" onClick={onClose}><Icon name="x" size={16} /></button></header>
           {section === 'library' && <Library config={config} cvs={cvs} themes={themes} onChange={onChange} onError={onError} />}
-          {section === 'themes' && <Themes cvs={cvs} themes={themes} reloadKey={reloadKey} onThemesChanged={onThemesChanged} onError={onError} />}
+          {section === 'themes' && <Themes cvs={cvs} themes={themes} reloadKey={reloadKey} onThemesChanged={onThemesChanged} onGuide={onGuide} onError={onError} />}
           {section === 'agents' && <Agents binary={binary} />}
         </div>
       </div>

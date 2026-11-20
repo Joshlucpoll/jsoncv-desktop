@@ -517,6 +517,12 @@ pub async fn open_theme_in(state: State<'_, AppState>, editor: String, id: Strin
     blocking(move || Ok(crate::editors::open(&editor, &dir)?)).await
 }
 
+/// The theme authoring guide (the same text agents read over MCP) as HTML.
+#[tauri::command]
+pub fn theme_guide_html() -> String {
+    jsoncv_core::render::markdown_html(jsoncv_core::THEME_GUIDE)
+}
+
 /// Called by the UI once its unsaved-draft guard allows quitting.
 #[tauri::command]
 pub fn exit_app(app: AppHandle) {

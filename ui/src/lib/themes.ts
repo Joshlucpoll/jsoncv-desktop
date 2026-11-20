@@ -7,3 +7,7 @@ export const themeIdFromName = (name: string): string =>
 /** The open action to use: the saved one if that editor is still installed, otherwise Reveal. */
 export const openAction = (stored: string | null, editors: { id: string }[]): string =>
   stored && editors.some((e) => e.id === stored) ? stored : 'reveal'
+
+/** The prompt "Copy prompt" puts on the clipboard for the user's agent. */
+export const themePrompt = (cv: string | null): string =>
+  `Using the jsoncv MCP server, read jsoncv://theme-guide, then create a theme called <name> that looks like: <describe it>. Fix every render_error, then set it as the theme for ${cv ? `my CV "${cv}"` : 'my CV'}.`

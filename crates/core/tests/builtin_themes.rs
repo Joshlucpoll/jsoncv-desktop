@@ -170,3 +170,15 @@ fn builtin_themes_render_extra_schema_fields() {
         }
     }
 }
+
+#[test]
+fn theme_guide_renders_tables_and_code_safely() {
+    let html = jsoncv_core::render::markdown_html(THEME_GUIDE);
+    assert!(html.contains("<table>"));
+    assert!(html.contains("<pre><code"));
+    assert!(html.contains("format_date"));
+    let evil = jsoncv_core::render::markdown_html("<script>x</script>\n\n[a](javascript:alert(1))");
+    assert!(!evil.contains("<script>"));
+    assert!(!evil.contains("href=\"javascript"));
+    assert!(evil.contains("<a href=\"#\">a</a>"));
+}

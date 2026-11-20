@@ -474,9 +474,20 @@ pub(crate) fn format_date(v: &Value, fmt: &str) -> String {
 }
 
 fn markdown(text: Option<String>) -> Value {
+    Value::from_safe_string(md_to_html(
+        &text.unwrap_or_default(),
+        pulldown_cmark::Options::empty(),
+    ))
+}
+
+/// Markdown for app text such as the theme guide: tables on, same escaping and link rules as the template filter.
+pub fn markdown_html(text: &str) -> String {
+    md_to_html(text, pulldown_cmark::Options::ENABLE_TABLES)
+}
+
+fn md_to_html(text: &str, opts: pulldown_cmark::Options) -> String {
     use pulldown_cmark::{html::push_html, Event, Parser, Tag};
-    let text = text.unwrap_or_default();
-    let events = Parser::new(&text).map(|e| match e {
+    let events = Parser::new_ext(text, opts).map(|e| match e {
         Event::Html(s) | Event::InlineHtml(s) => Event::Text(s),
         Event::Start(Tag::Link {
             link_type,
@@ -504,7 +515,7 @@ fn markdown(text: Option<String>) -> Value {
     });
     let mut out = String::new();
     push_html(&mut out, events);
-    Value::from_safe_string(out)
+    out
 }
 
 /// Allow only http(s), mailto, tel or scheme-less (relative / `#`) destinations.

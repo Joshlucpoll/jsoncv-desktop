@@ -6,7 +6,7 @@ import { Icon } from './Icon.tsx'
 import { useMenu } from '../lib/menu.ts'
 
 type Props = {
-  name: string; theme: string | null; themes: ThemeInfo[]; onTheme: (id: string) => void; onManageThemes: () => void
+  name: string; theme: string | null; themes: ThemeInfo[]; onTheme: (id: string) => void; onManageThemes: () => void; onGuide: () => void
   editing: boolean; exporting: boolean; onEdit: () => void; onExport: (f: ExportFormat) => void; onPrint: () => void
   /** The edit panel shows the JSON editor. */
   json: boolean; onJson: () => void
@@ -64,7 +64,7 @@ function OptionsMenu({ json, onJson, continuous, onPageMode }: Pick<Props, 'json
   )
 }
 
-function ThemePicker({ cv, value: chosen, themes, onPick, onManage }: { cv: string; value: string; themes: ThemeInfo[]; onPick: (id: string) => void; onManage: () => void }) {
+function ThemePicker({ cv, value: chosen, themes, onPick, onManage, onGuide }: { cv: string; value: string; themes: ThemeInfo[]; onPick: (id: string) => void; onManage: () => void; onGuide: () => void }) {
   const { open, setOpen, box, onKeyDown } = useMenu()
   const [reports, setReports] = useState<Record<string, ThemeReport>>({})
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
@@ -106,20 +106,21 @@ function ThemePicker({ cv, value: chosen, themes, onPick, onManage }: { cv: stri
           })}
           <div className="menu-sep" role="separator" />
           <button role="menuitem" onClick={() => { setOpen(false); onManage() }}>Manage themes…</button>
+          <button role="menuitem" onClick={() => { setOpen(false); onGuide() }}>How to create a theme…</button>
         </div>
       )}
     </div>
   )
 }
 
-export function Toolbar({ name, theme, themes, onTheme, onManageThemes, editing, exporting, onEdit, onExport, onPrint, json, onJson, continuous, onPageMode }: Props) {
+export function Toolbar({ name, theme, themes, onTheme, onManageThemes, onGuide, editing, exporting, onEdit, onExport, onPrint, json, onJson, continuous, onPageMode }: Props) {
   return (
     <header className="toolbar" data-tauri-drag-region>
       <h1 data-tauri-drag-region>{name}</h1>
       <span className="spacer" data-tauri-drag-region />
       {/* Least to most important, left to right: the primary action sits at the edge. */}
       <OptionsMenu json={json} onJson={onJson} continuous={continuous} onPageMode={onPageMode} />
-      <ThemePicker cv={name} value={theme ?? DEFAULT_THEME} themes={themes} onPick={onTheme} onManage={onManageThemes} />
+      <ThemePicker cv={name} value={theme ?? DEFAULT_THEME} themes={themes} onPick={onTheme} onManage={onManageThemes} onGuide={onGuide} />
       <span className="tb-sep" aria-hidden="true" />
       <button className={`with-icon${editing ? ' on' : ''}`} aria-pressed={editing} title={`Edit (${MOD}E)`} onClick={onEdit}><Icon name="pencil" />Edit</button>
       <ExportMenu busy={exporting} onExport={onExport} onPrint={onPrint} />

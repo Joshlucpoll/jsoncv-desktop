@@ -8,6 +8,7 @@ import { Toolbar } from './components/Toolbar.tsx'
 import { EditPanel, type EditTab } from './components/EditPanel.tsx'
 import { Preview } from './components/Preview.tsx'
 import { DiffView } from './components/DiffView.tsx'
+import { ThemeGuide } from './components/ThemeGuide.tsx'
 import { Toasts } from './components/Toasts.tsx'
 import { useToasts } from './lib/toasts.ts'
 import { type Cursor, step } from './lib/undo.ts'
@@ -22,6 +23,7 @@ export default function App() {
   const [order, setOrder] = useState<string[]>([])
   const [loaded, setLoaded] = useState(false)
   const [themes, setThemes] = useState<ThemeInfo[]>([])
+  const [guideOpen, setGuideOpen] = useState(false)
   const [selected, setSelected] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [editing, setEditing] = useState(false)
@@ -269,6 +271,7 @@ export default function App() {
           onPrint={doPrint}
           onTheme={(id) => setCvTheme(current, id).then(reloadCvs, fail)}
           onManageThemes={() => setSettingsOpen('themes')}
+          onGuide={() => setGuideOpen(true)}
           json={editing && editTab === 'json'}
           onJson={toggleJson}
           continuous={continuous}
@@ -294,11 +297,13 @@ export default function App() {
       </main>
       {settingsOpen && (
         <Settings
-          cvs={cvs} config={config} binary={binary} themes={themes} reloadKey={reloadKey} section={settingsOpen}
-          onChange={changeLibrary} onThemesChanged={() => void reloadThemes()}
+          cvs={cvs} config={config} binary={binary} themes={themes} reloadKey={reloadKey} section={settingsOpen} onSection={setSettingsOpen}
+          onChange={changeLibrary} onThemesChanged={() => void reloadThemes()} onGuide={() => setGuideOpen(true)}
           onError={fail} onClose={() => setSettingsOpen(undefined)}
         />
       )}
+      {/* After Settings so it stacks on top; its Escape never reaches the Settings scrim. */}
+      {guideOpen && <ThemeGuide cv={current ?? null} onClose={() => setGuideOpen(false)} onAgents={() => { setGuideOpen(false); setSettingsOpen('agents') }} />}
       {diffFor && <DiffView name={diffFor.name} commit={diffFor.commit} mode="change" toggle title={diffFor.title} onClose={() => setDiffFor(undefined)} />}
     </div>
   )
