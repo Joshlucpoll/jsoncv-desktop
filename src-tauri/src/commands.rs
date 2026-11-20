@@ -287,10 +287,15 @@ pub async fn connect_agent(agent: String) -> Res<String> {
 }
 
 #[tauri::command]
-pub async fn export(state: State<'_, AppState>, name: String, format: ExportFormat) -> Res<String> {
+pub async fn export(
+    state: State<'_, AppState>,
+    name: String,
+    format: ExportFormat,
+    path: String,
+) -> Res<String> {
     let lib = state.lib();
     Ok(lib
-        .export(&name, format, None)
+        .export_to(&name, format, None, Some(std::path::Path::new(&path)))
         .await?
         .to_string_lossy()
         .into_owned())

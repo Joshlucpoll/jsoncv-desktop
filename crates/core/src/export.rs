@@ -212,18 +212,32 @@ pub async fn html_to_png(html: &str, size: PageSize) -> Result<Vec<u8>, CoreErro
 }
 
 impl Library {
+    /// Exports to `exports/<name>[-<theme>].<ext>` in the library, replacing an earlier export.
     pub async fn export(
         &self,
         name: &str,
         format: ExportFormat,
         theme: Option<&str>,
     ) -> Result<PathBuf, CoreError> {
+        self.export_to(name, format, theme, None).await
+    }
+
+    /// Exports to `dest`, or to the default path in `exports/` when `dest` is `None`.
+    pub async fn export_to(
+        &self,
+        name: &str,
+        format: ExportFormat,
+        theme: Option<&str>,
+        dest: Option<&Path>,
+    ) -> Result<PathBuf, CoreError> {
         let cv_path = self.cv_path(name)?;
         let dir = self.root().join("exports");
-        std::fs::create_dir_all(&dir)?;
+        if dest.is_none() {
+            std::fs::create_dir_all(&dir)?;
+        }
         let flat = name;
         if format == ExportFormat::Json {
-            let out = dir.join(format!("{flat}.json"));
+            let out = dest.map_or_else(|| dir.join(format!("{flat}.json")), Path::to_path_buf);
             let bytes = std::fs::read(&cv_path).map_err(|e| match e.kind() {
                 std::io::ErrorKind::NotFound => CoreError::NotFound(name.to_string()),
                 _ => e.into(),
@@ -238,10 +252,15 @@ impl Library {
         } else {
             "html"
         };
-        let out = dir.join(format!(
-            "{flat}-{}.{ext}",
-            id.strip_prefix("builtin:").unwrap_or(&id)
-        ));
+        let out = dest.map_or_else(
+            || {
+                dir.join(format!(
+                    "{flat}-{}.{ext}",
+                    id.strip_prefix("builtin:").unwrap_or(&id)
+                ))
+            },
+            Path::to_path_buf,
+        );
         if format == ExportFormat::Pdf {
             let continuous = self.read_cv(name)?.cv["meta"]["pageMode"] == "continuous";
             let size = self.get_theme(&id)?.info.meta.page.size;

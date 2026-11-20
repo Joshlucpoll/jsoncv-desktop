@@ -68,7 +68,7 @@ mockIPC(
         ? { render_error: null, missing: ['awards', 'work[].highlights', 'basics.location.region'] }
         : { render_error: null, missing: [] }
       case 'duplicate_theme': { const t = theme(a.newId, a.newId, false); themes.push(t); return t }
-      case 'export': return `~/Documents/CVs/exports/${a.name}-classic.${a.format}`
+      case 'export': return a.path
       case 'print_cv': case 'reveal': return null
       case 'theme_dir_path': return `~/Documents/CVs/themes/${a.id}`
       // Close/quit guard: log instead of closing so the flow is visible in the browser console.
@@ -89,6 +89,7 @@ mockIPC(
       case 'preview_html': return fetch('/dev-preview.html').then((r) => r.text())
       case 'save_draft': return { commit: 'c1', base: 'h2' }
       case 'add_asset_from_path': return 'assets/photo.png'
+      case 'plugin:dialog|save': return `/Users/me/Documents/${(a?.options as unknown as { defaultPath: string }).defaultPath}`
       case 'plugin:dialog|open': return a?.options && (a.options as unknown as { directory?: boolean }).directory ? '/Users/me/Library/Mobile Documents/CVs' : '/tmp/photo.png'
       default: return null
     }

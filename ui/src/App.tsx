@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ask, open } from '@tauri-apps/plugin-dialog'
+import { ask, open, save } from '@tauri-apps/plugin-dialog'
 import { DEFAULT_THEME, MOCK, type ApiError, type CvInfo, type ExportFormat, type LibraryConfig, type MenuCommand, type ThemeInfo, type Version, binaryPath, errorMessage, exitApp, exportCv, getConfig, getOrder, history, listCvs, listFolders, listThemes, onCloseRequested, onLibraryChanged, onMenuCommand, onQuitRequested, printCv, restore, reveal, setCvTheme, setLibrary, setPageMode } from './api.ts'
 import { MOD, revealLabel } from './lib/platform.ts'
 import { Settings, type SettingsSection } from './components/Settings.tsx'
@@ -166,9 +166,11 @@ export default function App() {
       const msg = 'Your latest edits could not be saved. Export the last saved version instead?'
       if (!(MOCK ? window.confirm(msg) : await ask(msg, { title: 'Export', kind: 'warning' }))) return
     }
+    const dest = await save({ title: 'Export', defaultPath: `${current}.${f}`, filters: [{ name: f.toUpperCase(), extensions: [f] }] })
+    if (!dest) return
     setExporting(true)
     try {
-      const path = await exportCv(current, f)
+      const path = await exportCv(current, f, dest)
       push({ key: 'export', seal: true, text: `Exported to ${path}`, timeout: 10_000, actions: [{ label: revealLabel, run: () => void reveal(path).catch(fail) }] })
     } catch (e) {
       if ((e as ApiError)?.kind === 'Browser') push({ key: 'export', kind: 'warn', text: 'PDF export needs Chrome, Edge or Chromium. None was found.', actions: [{ label: 'Print…', run: doPrint }] })

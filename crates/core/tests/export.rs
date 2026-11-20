@@ -55,6 +55,19 @@ async fn json_export_matches_file() {
 }
 
 #[tokio::test]
+async fn export_to_writes_chosen_path() {
+    let (d, lib) = lib_with_photo();
+    let dest = d.path().join("elsewhere.html");
+    let p = lib
+        .export_to("my-cv", ExportFormat::Html, None, Some(&dest))
+        .await
+        .unwrap();
+    assert_eq!(p, dest);
+    assert!(dest.is_file());
+    assert!(!d.path().join("exports/my-cv-classic.html").exists());
+}
+
+#[tokio::test]
 async fn pdf_export_writes_pdf() {
     if find_browser().is_none() {
         eprintln!("skip: no browser");

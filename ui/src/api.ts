@@ -55,7 +55,7 @@ export const setPageMode = (name: string, continuous: boolean) => invoke<Saved>(
 export type AgentId = 'claude-code' | 'claude-desktop' | 'codex'
 /** Adds the jsoncv MCP server to a coding agent; resolves with a line to show the user. */
 export const connectAgent = (agent: AgentId) => invoke<string>('connect_agent', { agent })
-export const exportCv = (name: string, format: ExportFormat) => invoke<string>('export', { name, format })
+export const exportCv = (name: string, format: ExportFormat, path: string) => invoke<string>('export', { name, format, path })
 export const printCv = (name: string) => invoke<void>('print_cv', { name })
 export const addAssetFromPath = (path: string) => invoke<string>('add_asset_from_path', { path })
 export const getConfig = () => invoke<LibraryConfig>('get_config')
