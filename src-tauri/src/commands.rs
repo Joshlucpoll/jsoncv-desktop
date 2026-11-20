@@ -301,7 +301,7 @@ pub async fn export(
         .into_owned())
 }
 
-/// Opens a window on the preview URL and prints it once loaded. Async: window creation in a
+/// Prints the CV from a webview on the preview URL once it loads. Async: webview creation in a
 /// sync command deadlocks on Windows.
 #[tauri::command]
 pub async fn print_cv(app: AppHandle, state: State<'_, AppState>, name: String) -> Res<()> {
@@ -313,22 +313,38 @@ pub async fn print_cv(app: AppHandle, state: State<'_, AppState>, name: String) 
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
     let url = preview_url(&name);
-    if let Some(w) = app.get_webview_window(&label) {
-        // Reloading fires the window's page-load handler, which prints again.
+    if let Some(w) = app.get_webview(&label) {
+        // Reloading fires the webview's page-load handler, which prints again.
         w.navigate(url)?;
-        w.set_focus()?;
         return Ok(());
     }
-    WebviewWindowBuilder::new(&app, label, WebviewUrl::CustomProtocol(url))
-        .title(format!("Print – {name}"))
-        .on_page_load(|w, p| {
-            if p.event() == PageLoadEvent::Finished {
-                if let Err(e) = w.print() {
-                    eprintln!("jsoncv: print failed: {e}");
-                }
+    let on_load = |w: tauri::Webview, p: tauri::webview::PageLoadPayload<'_>| {
+        if p.event() == PageLoadEvent::Finished {
+            if let Err(e) = w.print() {
+                eprintln!("jsoncv: print failed: {e}");
             }
-        })
-        .build()?;
+        }
+    };
+    // WebView2 draws its print preview inside the webview, so Windows needs a visible window.
+    if cfg!(windows) {
+        WebviewWindowBuilder::new(&app, label, WebviewUrl::CustomProtocol(url))
+            .title(format!("Print – {name}"))
+            .on_page_load(move |w, p| on_load(w.as_ref().clone(), p))
+            .build()?;
+    } else {
+        // A hidden child of the main window, so the print sheet opens on the main window.
+        let main = app
+            .get_window("main")
+            .ok_or_else(|| CoreError::NotFound("main window".into()))?;
+        let page = tauri::webview::WebviewBuilder::new(label, WebviewUrl::CustomProtocol(url))
+            .on_page_load(on_load);
+        // Off-screen at A4 size at 96 dpi: a zero-size webview may print blank pages.
+        main.add_child(
+            page,
+            tauri::LogicalPosition::new(-10_000.0, 0.0),
+            tauri::LogicalSize::new(794.0, 1123.0),
+        )?;
+    }
     Ok(())
 }
 
