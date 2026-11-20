@@ -91,7 +91,7 @@ The server reads the library path from the app's Settings. To override it, add `
 
 ## Themes
 
-Themes live in `<library>/themes/<theme-id>/`. Built-in themes (`builtin:classic`, `builtin:two-column`) are read-only. The app manages themes but does not edit them. To make one, ask an agent: the theme authoring guide is an MCP resource, so an agent can write and preview themes. To edit one yourself, use Settings → Themes → "New theme…" (a copy of any theme), then open its folder in your editor. Settings → Themes → "How do I create a theme?" shows the same guide. Delete moves a theme to the Trash, and CVs that used it switch to Classic. In templates, pass URLs through the `safe_url` filter.
+Themes live in `<library>/themes/<theme-id>/`. Built-in themes (`builtin:classic`, `builtin:two-column`) are read-only. The app manages themes but does not edit them. To make one, ask an agent: the theme authoring guide is an MCP resource (`jsoncv://theme-guide`) and a tool (`get_guide`), so an agent can write and preview themes. To edit one yourself, use Settings → Themes → "New theme…" (a copy of any theme), then open its folder in your editor. Settings → Themes → "How do I create a theme?" shows the same guide. Delete moves a theme to the Trash, and CVs that used it switch to Classic. In templates, pass URLs through the `safe_url` filter.
 
 ## Releases
 

@@ -107,7 +107,7 @@ async fn add_asset_needs_exactly_one_source() {
 }
 
 #[test]
-fn tools_list_has_14_tools_with_exact_names() {
+fn tools_list_has_15_tools_with_exact_names() {
     let mut names: Vec<String> = JsoncvServer::tool_router()
         .list_all()
         .into_iter()
@@ -129,6 +129,7 @@ fn tools_list_has_14_tools_with_exact_names() {
         "preview",
         "export_cv",
         "add_asset",
+        "get_guide",
     ];
     want.sort();
     assert_eq!(names, want);
@@ -187,4 +188,25 @@ async fn duplicate_cv_copies() {
         .unwrap();
     assert_eq!(b["folder"], Value::Null);
     assert!(b.get("tailored_from").is_none());
+}
+
+#[tokio::test]
+async fn get_guide_returns_references_as_text() {
+    let (_d, s) = server();
+    let r = s.get_guide(Parameters(GuideArgs { topic: None })).await;
+    assert_eq!(r.is_error, Some(false));
+    assert_eq!(text(&r), jsoncv_core::THEME_GUIDE);
+    let r = s
+        .get_guide(Parameters(GuideArgs {
+            topic: Some("schema".into()),
+        }))
+        .await;
+    assert!(text(&r).contains("\"$schema\""));
+    let r = s
+        .get_guide(Parameters(GuideArgs {
+            topic: Some("nope".into()),
+        }))
+        .await;
+    assert_eq!(r.is_error, Some(true));
+    assert!(text(&r).contains("Use one of: schema, theme-guide, sample-cv"));
 }

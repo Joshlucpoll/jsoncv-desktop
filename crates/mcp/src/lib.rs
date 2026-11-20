@@ -23,7 +23,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-const INSTRUCTIONS: &str = "Edit jsoncv CVs. Read jsoncv://schema before editing and jsoncv://theme-guide before writing themes. Prefer update_cv (JSON Patch) for small edits. After save_theme, fix every render_error and consider every missing field. Use preview to see your theme. Before an index-based array edit (such as /work/1/url), add a `test` op on that element so the patch fails if the array changed.";
+const INSTRUCTIONS: &str = "Edit jsoncv CVs. Read jsoncv://schema before editing and jsoncv://theme-guide before writing themes (or call get_guide if you cannot read resources). Prefer update_cv (JSON Patch) for small edits. After save_theme, fix every render_error and consider every missing field. Use preview to see your theme. Before an index-based array edit (such as /work/1/url), add a `test` op on that element so the patch fails if the array changed.";
 
 const RESOURCES: [(&str, &str, &str, &str); 3] = [
     ("jsoncv://schema", "schema", "application/json", SCHEMA),
@@ -132,6 +132,11 @@ pub struct RestoreArgs {
     pub name: String,
     /// Version id (`commit`) from cv_history. Restoring adds a new version; history is kept.
     pub commit: String,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GuideArgs {
+    /// `theme-guide` (default), `schema` or `sample-cv`.
+    pub topic: Option<String>,
 }
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ThemeIdArgs {
@@ -276,6 +281,23 @@ impl JsoncvServer {
         Parameters(a): Parameters<RestoreArgs>,
     ) -> CallToolResult {
         done(self.lib.restore(&a.name, &a.commit, Author::Agent))
+    }
+
+    #[tool(
+        description = "Read a reference as text: `theme-guide` (default; how to write a theme), `schema` (the CV JSON Schema) or `sample-cv`. The same text as the jsoncv:// resources, for clients that cannot read resources."
+    )]
+    pub async fn get_guide(&self, Parameters(a): Parameters<GuideArgs>) -> CallToolResult {
+        let topic = a.topic.as_deref().unwrap_or("theme-guide");
+        match RESOURCES.iter().find(|(_, name, _, _)| *name == topic) {
+            Some((_, _, _, body)) => CallToolResult::success(vec![ContentBlock::text(*body)]),
+            None => {
+                let names: Vec<_> = RESOURCES.iter().map(|(_, n, _, _)| *n).collect();
+                text_err(format!(
+                    "Unknown topic {topic}. Use one of: {}",
+                    names.join(", ")
+                ))
+            }
+        }
     }
 
     #[tool(description = "List built-in and custom themes.")]
