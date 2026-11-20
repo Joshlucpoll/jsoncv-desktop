@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { type AgentId, DEFAULT_THEME, type CvInfo, type LibraryConfig, type LibraryStats, type ThemeInfo, connectAgent, errorMessage, libraryStats, reveal } from '../api.ts'
+import { type AgentId, DEFAULT_THEME, type CvInfo, type Editor, listEditors, type LibraryConfig, type LibraryStats, type ThemeInfo, connectAgent, errorMessage, libraryStats, reveal } from '../api.ts'
 import { MOD, revealLabel } from '../lib/platform.ts'
 import { Meander } from './Mosaic.tsx'
 import { Icon, type IconName } from './Icon.tsx'
 import { Logo, type LogoName } from './Logo.tsx'
 import { NewTheme, ThemeRow } from './ThemesView.tsx'
 import { useMenu } from '../lib/menu.ts'
+import { openAction } from '../lib/themes.ts'
+
+const OPEN_KEY = 'theme-open-with'
 
 const copy = (text: string) => navigator.clipboard?.writeText(text)
 
@@ -199,6 +202,23 @@ function Library({ config, cvs, themes, onChange, onError }: { config?: LibraryC
 
 function Themes({ cvs, themes, reloadKey, onThemesChanged, onError }: { cvs: CvInfo[]; themes: ThemeInfo[]; reloadKey: number; onThemesChanged: () => void; onError: (e: unknown) => void }) {
   const [newFrom, setNewFrom] = useState<string>() // undefined = dialog closed
+  const [editors, setEditors] = useState<Editor[]>([])
+  const [openWith, setOpenWith] = useState('reveal')
+  useEffect(() => {
+    let live = true
+    listEditors().then((eds) => {
+      if (!live) return
+      let stored: string | null = null
+      try { stored = localStorage.getItem(OPEN_KEY) } catch { /* storage unavailable: start from Reveal */ }
+      setEditors(eds)
+      setOpenWith(openAction(stored, eds))
+    }, onError)
+    return () => { live = false }
+  }, [onError])
+  const pickOpen = (a: string) => {
+    setOpenWith(a)
+    try { localStorage.setItem(OPEN_KEY, a) } catch { /* per-machine convenience only */ }
+  }
   return (
     <>
       <p className="muted lead">Themes are files: a template and a stylesheet. The easiest way to make one is to ask your agent. You can also open a theme in your editor.</p>
@@ -212,7 +232,7 @@ function Themes({ cvs, themes, reloadKey, onThemesChanged, onError }: { cvs: CvI
       )}
       <div className="theme-rows">
         {themes.map((t) => (
-          <ThemeRow key={t.id} theme={t} reloadKey={reloadKey} usedBy={cvs.filter((c) => c.theme === t.id).map((c) => c.name)}
+          <ThemeRow key={t.id} theme={t} reloadKey={reloadKey} editors={editors} openWith={openWith} onOpenWith={pickOpen} usedBy={cvs.filter((c) => c.theme === t.id).map((c) => c.name)}
             onDuplicate={() => setNewFrom(t.id)} onDeleted={onThemesChanged} onError={onError} />
         ))}
       </div>

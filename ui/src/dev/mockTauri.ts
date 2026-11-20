@@ -71,6 +71,8 @@ mockIPC(
       case 'delete_theme': themes.splice(themes.findIndex((t) => t.id === a.id), 1); return null
       case 'export': return a.path
       case 'print_cv': case 'reveal': return null
+      case 'list_editors': return [{ id: 'vscode', label: 'VS Code' }, { id: 'zed', label: 'Zed' }]
+      case 'open_theme_in': console.info(`[mock] open ${a.id} in ${a.editor}`); return null
       case 'theme_dir_path': return `~/Documents/CVs/themes/${a.id}`
       // Close/quit guard: log instead of closing so the flow is visible in the browser console.
       case 'exit_app': case 'plugin:window|destroy': console.info(`[mock] ${cmd}: app would close`); return null

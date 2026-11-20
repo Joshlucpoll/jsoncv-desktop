@@ -349,6 +349,11 @@ button.status.error { cursor: pointer; }
 .theme-actions button, .new-theme button { border: 1px solid var(--line); background: var(--ctl); border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: default; display: inline-flex; align-items: center; gap: 5px; }
 .theme-row .icon-btn { border: 0; background: none; padding: 3px; }
 .theme-row .icon-btn.danger:hover { color: var(--danger); }
+.split { display: inline-flex; }
+.theme-row .split > button:first-child { border-radius: 6px 0 0 6px; }
+.theme-row .split > .trigger { border-radius: 0 6px 6px 0; border-left: 0; padding: 2px 5px; display: inline-flex; align-items: center; }
+.theme-row .open-menu button { display: flex; align-items: center; gap: 7px; border: 0; border-radius: 5px; padding: 4px 10px; font-size: 13px; }
+.theme-row .open-menu button:not(:hover):not(:focus-visible) { background: none; }
 .new-theme { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; border: 1px solid var(--accent); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
 .new-theme label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
 .new-theme input, .new-theme select { padding: 3px 7px; border-radius: 6px; border: 1px solid var(--line); background: var(--ctl); color: var(--text); font: inherit; font-size: 13px; outline: none; user-select: text; }

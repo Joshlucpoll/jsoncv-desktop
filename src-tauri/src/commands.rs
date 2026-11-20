@@ -482,6 +482,41 @@ pub async fn theme_dir_path(state: State<'_, AppState>, id: String) -> Res<Strin
     .await
 }
 
+#[derive(Serialize)]
+pub struct EditorInfo {
+    id: String,
+    label: String,
+}
+
+/// Editors from the fixed list that are installed here.
+#[tauri::command]
+pub async fn list_editors() -> Res<Vec<EditorInfo>> {
+    blocking(|| {
+        Ok(crate::editors::installed()
+            .into_iter()
+            .map(|e| EditorInfo {
+                id: e.id.into(),
+                label: e.label.into(),
+            })
+            .collect())
+    })
+    .await
+}
+
+/// Opens a library theme's folder in an editor from the fixed list.
+#[tauri::command]
+pub async fn open_theme_in(state: State<'_, AppState>, editor: String, id: String) -> Res<()> {
+    let dir = with_lib(&state, move |l| {
+        let dir = l.theme_dir(&id)?;
+        if !dir.is_dir() {
+            return Err(CoreError::NotFound(format!("Theme {id}")));
+        }
+        Ok(dir)
+    })
+    .await?;
+    blocking(move || Ok(crate::editors::open(&editor, &dir)?)).await
+}
+
 /// Called by the UI once its unsaved-draft guard allows quitting.
 #[tauri::command]
 pub fn exit_app(app: AppHandle) {

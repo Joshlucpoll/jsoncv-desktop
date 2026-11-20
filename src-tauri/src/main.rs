@@ -4,6 +4,7 @@
 mod agents;
 mod app;
 mod commands;
+mod editors;
 
 use std::path::PathBuf;
 

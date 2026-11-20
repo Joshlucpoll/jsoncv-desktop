@@ -65,6 +65,9 @@ export type LibraryStats = { bytes: number; assets: number; history_bytes: numbe
 export const libraryStats = () => invoke<LibraryStats>('library_stats')
 export const reveal = (path: string) => invoke<void>('reveal', { path })
 export const binaryPath = () => invoke<string>('binary_path')
+export type Editor = { id: string; label: string }
+export const listEditors = () => invoke<Editor[]>('list_editors')
+export const openThemeIn = (editor: string, id: string) => invoke<void>('open_theme_in', { editor, id })
 export const themeDirPath = (id: string) => invoke<string>('theme_dir_path', { id })
 export const exitApp = () => invoke<void>('exit_app')
 

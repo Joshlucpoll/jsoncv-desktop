@@ -203,6 +203,8 @@ pub fn run() {
             commands::library_stats,
             commands::binary_path,
             commands::theme_dir_path,
+            commands::list_editors,
+            commands::open_theme_in,
             commands::exit_app,
         ])
         .run(tauri::generate_context!())

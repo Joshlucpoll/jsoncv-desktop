@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { themeIdFromName } from './themes.ts'
+import { openAction, themeIdFromName } from './themes.ts'
 import { THEME_ID } from './platform.ts'
 
 describe('themeIdFromName', () => {
@@ -19,4 +19,11 @@ describe('themeIdFromName', () => {
     expect(id.endsWith('-')).toBe(false)
     expect(THEME_ID.test(id)).toBe(true)
   })
+})
+
+describe('openAction', () => {
+  const eds = [{ id: 'vscode', label: 'VS Code' }]
+  it('defaults to reveal', () => expect(openAction(null, eds)).toBe('reveal'))
+  it('keeps an installed editor', () => expect(openAction('vscode', eds)).toBe('vscode'))
+  it('falls back when the editor is gone', () => expect(openAction('zed', eds)).toBe('reveal'))
 })
