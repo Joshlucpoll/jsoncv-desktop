@@ -86,6 +86,8 @@ where
         .chrome_executable(exe)
         .user_data_dir(profile.path())
         .new_headless_mode()
+        // A cold Edge start on a slow Windows machine can pass the 20 s default.
+        .launch_timeout(Duration::from_secs(60))
         .args([
             "--disable-gpu",
             "--no-first-run",
