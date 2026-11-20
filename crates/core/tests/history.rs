@@ -168,11 +168,14 @@ fn lock_times_out() {
     let d = TempDir::new().unwrap();
     let lib = open(&d);
     let (tx, rx) = std::sync::mpsc::channel();
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
     let other = lib.clone();
+    // Hold the lock until the waiter gives up: SQLite counts nominal sleep time,
+    // so on a slow CI VM the real wait can run well past 2 s.
     let h = std::thread::spawn(move || {
         other.locked(|_| {
             tx.send(()).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(2600));
+            let _ = done_rx.recv_timeout(std::time::Duration::from_secs(30));
             Ok(())
         })
     });
@@ -180,6 +183,7 @@ fn lock_times_out() {
     let t = std::time::Instant::now();
     assert!(matches!(lib.locked(|_| Ok(())), Err(CoreError::Locked)));
     assert!(t.elapsed() >= std::time::Duration::from_millis(1900));
+    done_tx.send(()).unwrap();
     h.join().unwrap().unwrap();
     lib.locked(|_| Ok(())).unwrap();
 }
